@@ -15,8 +15,8 @@ $ARGUMENTS
 
 ## Steps
 
-1. Confirm the blueprint lints clean (`/speckit-blueprint-lint`) if it has not been linted since its last
-   change.
+1. Confirm the blueprint lints clean: `python3 .specify/extensions/blueprint/scripts/blueprint.py lint`
+   must exit 0. If it does not, follow `/speckit-blueprint-lint` to fix it first.
 2. Run:
 
    ```bash

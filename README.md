@@ -95,6 +95,7 @@ blueprint.py compile E03 [--force]     # feature folder for one epic
 blueprint.py bootstrap                 # constitution, checklist, decisions log, CLAUDE.md block
 blueprint.py section 14.4              # print a section by number
 blueprint.py find ENT-Order SCR-04     # print definitions by ID
+blueprint.py lint                      # structural linter, then refs
 blueprint.py refs                      # unresolved IDs per epic (exit 1 if any)
 blueprint.py stale                     # compiled epics whose blueprint text changed
 ```

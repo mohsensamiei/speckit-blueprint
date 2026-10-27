@@ -29,7 +29,8 @@ Consequences for writing:
   `CP-SCR03-1…7`, and wildcards `EC-BOT-*` / `CP-SCR03-*`.
 - Flows, screens and edge cases pull in the copy lines and edge cases they name (second level), so a flow
   step that says "shows CP-SCR07-3" brings that line into the epic even if the story does not name it.
-- `blueprint.py refs` lists, per epic, the IDs with no definition. Phase 4 requires it to exit 0.
+- `blueprint.py lint` runs the linter and then lists, per epic, the IDs with no definition. Phase 4
+  requires it to exit 0.
 
 ## 2. Epic and story structure (unchanged, now load-bearing)
 

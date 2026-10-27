@@ -36,7 +36,8 @@ $ARGUMENTS
    If a decision changed, mark the old DR superseded and add the new one. Keep the evidence rules: new
    external facts carry `[VERIFIED — S-nn, date]` or `[ASSUMED — why]`.
 
-5. **Lint**: `/speckit-blueprint-lint` (both the linter and `blueprint.py refs`) until clean.
+5. **Lint**: `python3 .specify/extensions/blueprint/scripts/blueprint.py lint` until it exits 0
+   (see `/speckit-blueprint-lint` for how to fix findings).
 
 6. **Propagate.** Run:
 

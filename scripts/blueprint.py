@@ -14,6 +14,7 @@ Usage (from the project root; the extension installs this file under
     blueprint.py find ENT-Order [SCR-03 ...] print the blueprint definitions of IDs
     blueprint.py stale                       compiled epics whose blueprint text changed since compile
     blueprint.py refs                        per epic: IDs that compile can or cannot resolve (exit 1 if any cannot)
+    blueprint.py lint                        the structural linter, then refs
     blueprint.py epics                       epic and story IDs in blueprint order
     blueprint.py hook session-start          Claude Code SessionStart: one short status block
     blueprint.py hook guard                  Claude Code PreToolUse: block hand edits of compiled files
@@ -88,6 +89,13 @@ RANGE_RE = re.compile(
     r"\s*(?:to|through|…|\.\.\.|–)\s*(?:\1)?(\d+)(?![\d.])"
 )
 WILDCARD_RE = re.compile(r"((?:CP-[A-Za-z0-9]+|EC-[A-Z0-9]+)-)\*")
+
+REFS_HINT = (
+    "Define each unresolved ID once, outside the Epics section, in one of three shapes: a heading that starts "
+    "with it ('### F-03 — …'), a paragraph that starts with it in bold ('**ENT-Order** …'), or a table row "
+    "whose first cell is it ('| CP-SCR04-2 | …'). Put it in its home section (copy in §11, entities in §12.4, "
+    "edge cases in §15, critical e2e paths CE-n in §14.3, …). See references/speckit-flow.md §1."
+)
 
 EPIC_RE = re.compile(r"^## Epic (\d{2})\s*[—–-]\s*(.+?)\s*$")
 STORY_RE = re.compile(r"^### (E(\d{2})-S(\d{2}))\s*[—–-]\s*(.+?)\s*$")
@@ -940,7 +948,7 @@ def project_status(root: Path, cfg: dict) -> dict:
             continue
         if s in ("not-compiled", "stale"):
             why = "Blueprint changed after this epic was compiled; recompile it." if s == "stale" else f"Next epic: {row['epic']} — {row['title']}."
-            st["next"] = nxt("speckit-blueprint-compile", why, row["epic"], new_session=(s == "not-compiled"))
+            st["next"] = nxt("speckit-blueprint-compile", why, row["epic"])
         elif s == "compiled":
             st["next"] = nxt("speckit-tasks", "Feature compiled; generate tasks.md, then run /speckit-analyze.", row["epic"])
         elif s in ("tasked", "in-progress"):
@@ -1251,13 +1259,23 @@ def main(argv: list[str]) -> int:
                     out.append({"epic": e["id"], "feature_directory": d.relative_to(root).as_posix(), "changed": changed, "tasks_done": done, "tasks_total": total})
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return 0
-    if cmd == "refs":
+    if cmd in ("refs", "lint"):
+        rc = 0
+        if cmd == "lint":
+            linter = Path(__file__).resolve().parent / "lint_blueprint.py"
+            import subprocess
+
+            rc = subprocess.run([sys.executable, str(linter), str(bp_path), *args]).returncode
+            print("\nReference resolution (blueprint.py refs):")
         out = {}
         for e in bp.epics:
             _, pairs, unresolved = epic_refs(bp, e, cfg)
             out[e["id"]] = {"resolved": len({i for i, _ in pairs}), "unresolved": unresolved}
+        if any(v["unresolved"] for v in out.values()):
+            out["how_to_define"] = REFS_HINT
+            rc = rc or 1
         print(json.dumps(out, indent=2, ensure_ascii=False))
-        return 1 if any(v["unresolved"] for v in out.values()) else 0
+        return rc
     if cmd == "epics":
         print(json.dumps([{"epic": e["id"], "title": e["title"], "stories": [s["id"] for s in e["stories"]]} for e in bp.epics], indent=2, ensure_ascii=False))
         return 0

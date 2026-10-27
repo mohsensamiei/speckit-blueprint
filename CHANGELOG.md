@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 — 2026-10-27
+
+From an end-to-end run with Claude Code (bootstrap → compile → tasks → analyze → implement → review):
+
+- `blueprint.py lint` runs the linter and the reference check in one command; commands use it.
+- `refs`/`lint` output explains the definition shapes compile recognises when an ID is unresolved.
+- The flow skill keeps going through steps on "continue" and stops only at the plan/build session
+  boundary, a user gate or an unfixable problem; compiling no longer asks for a fresh session.
+
 ## 0.1.0 — 2026-10-27
 
 First release, Claude Code only, tested with Spec Kit 1.2.4.

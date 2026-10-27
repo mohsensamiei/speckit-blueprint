@@ -161,23 +161,18 @@ Mechanics:
 
 ## Phase 4 — Lint and hand over
 
-1. Lint and fix every error (warnings: fix or justify):
+1. Lint, and check that compile can resolve every ID each epic uses; fix every error and unresolved ID
+   (warnings: fix or justify), until it exits 0:
 
    ```bash
-   python3 .specify/extensions/blueprint/scripts/lint_blueprint.py docs/BLUEPRINT.md
+   python3 .specify/extensions/blueprint/scripts/blueprint.py lint
    ```
 
-2. Check that compile can resolve every ID each epic uses, and fix what it cannot:
-
-   ```bash
-   python3 .specify/extensions/blueprint/scripts/blueprint.py refs
-   ```
-
-3. Human pass: read the Executive summary, one persona, one flow and one epic as a stranger. Anything you
+2. Human pass: read the Executive summary, one persona, one flow and one epic as a stranger. Anything you
    had to infer, fix in the document.
-4. Run `/speckit-blueprint-bootstrap` (constitution, review checklist, decisions log, CLAUDE.md block).
+3. Run `/speckit-blueprint-bootstrap` (constitution, review checklist, decisions log, CLAUDE.md block).
    In incremental mode, run it only if constitution sections changed.
-5. Wrap up in 5–10 lines: point at the Assumptions table and the Open Questions, name the two or three
+4. Wrap up in 5–10 lines: point at the Assumptions table and the Open Questions, name the two or three
    things you are least sure about, and say the next step: a fresh session, then "continue" (or
    `/speckit-blueprint-compile E00`). Do not re-summarise the document. Do not commit unless the user asks.
 

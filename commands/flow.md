@@ -51,10 +51,18 @@ When unsure whether a request changes the product, treat it as an amendment and 
 - `speckit-blueprint-discover` with `state: all-done` → tell the user every epic is done and ask whether to
   start incremental discovery.
 
-Session boundaries keep token cost down. When `next.new_session` is true and this session has already done
-substantial work (a compile+tasks pass, an implementation, a review), stop and tell the user, in their
-language: "Open a fresh session in this project and say: continue." Do not start implementing an epic at
-the end of a long session.
+**Keep going.** After a step finishes, re-read the status and run the next step yourself, without asking,
+until you reach one of these stops:
+
+- a gate from section 4;
+- `next.new_session` is true and this session already did work (bootstrap, a compile+tasks pass, an
+  implementation, a review). That is the boundary between planning an epic and building it, and between
+  epics. Stop and tell the user, in their language: "Open a fresh session in this project and say:
+  continue." Implementation starts with a clean context;
+- a step reported a problem it could not fix (a precondition failed, an unresolved ID, red `check`).
+
+So "continue" on a fresh project runs bootstrap → compile E00 → tasks → analyze and stops before
+implement; "continue" in the next session implements and reviews E00 and stops.
 
 ## 4. Gates you never pass for the user
 
@@ -62,6 +70,7 @@ the end of a long session.
 - Amendments that change user-visible behaviour, money, data retention or security.
 - `git commit` and `git push`: follow the user's and the repository's rules; never commit or push unasked.
 
-## 5. After each step
+## 5. When you stop
 
-Run `status --brief` again and tell the user in one or two lines what changed and what comes next.
+Run `status --brief` and tell the user in a few lines what was done, anything they must check or decide,
+and what comes next.
