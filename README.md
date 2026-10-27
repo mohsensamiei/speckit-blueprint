@@ -15,7 +15,22 @@ The bridge is a deterministic compiler. `/speckit-blueprint-compile E03` resolve
 open questions, sources) to its definition in the blueprint and writes a spec-kit feature folder with
 exactly that. Build sessions never search the blueprint.
 
-Status: **0.1.0, Claude Code only.** Tested against Spec Kit 1.2.4.
+Status: **0.2.0, Claude Code only.** Tested against Spec Kit 1.2.4.
+
+## Tested end to end
+
+A one-paragraph idea in Persian (a personal expense tracker in tomans with Jalali-month reports) was taken
+from nothing to a finished v1 with this extension and Claude Code (Sonnet), every session started with
+"continue" in a fresh session:
+
+| Stage | Outcome |
+|---|---|
+| Discover | 7 intake questions with defaults, web research with pinned versions, decision brief, a 133 KB blueprint (4 epics, 12 stories) that lints clean with every ID resolvable |
+| Bootstrap | Constitution, review checklist, decisions log, CLAUDE.md block |
+| 4 epics × (plan session + build session) | 130/130 tasks ticked one by one, every epic reviewed `Status: DONE`, 217 tests green at 97.8% coverage |
+| Human gates | One manual terminal check (RTL column alignment) stopped the flow until the user confirmed; no commit or push without approval |
+
+Total model cost of the whole run was about $13 on Sonnet, discovery included.
 
 ## Why
 
@@ -33,10 +48,11 @@ Requires Python 3.9+ and Spec Kit 1.2+.
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.4
 specify init my-product --integration claude
 cd my-product
-specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/heads/main.zip
+specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.2.0.zip
 ```
 
-For development, install from a local clone with `specify extension add --dev /path/to/speckit-blueprint`.
+Installing from a URL asks for confirmation once (answer `y`). For development, install from a local
+clone with `specify extension add --dev /path/to/speckit-blueprint`.
 
 Installing registers the commands as Claude Code skills (`/speckit-blueprint-…`), two Spec Kit hooks
 around `/speckit-implement`, and two Claude Code hooks in `.claude/settings.json` (session-start status and

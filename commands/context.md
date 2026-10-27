@@ -33,6 +33,9 @@ $ARGUMENTS
 4. Hold these rules for the whole implementation:
    - Tests for a story come from its ACs and **Tests** block and fail before the code exists.
    - Run `check` after each task; keep it green; never weaken the gate.
+   - Mark each task `[X]` in `tasks.md` as soon as it is done and green, one task at a time, before
+     starting the next. Never tick tasks in bulk at the end: the ticks are the resume point if the
+     session stops, and `blueprint.py status` reads progress from them.
    - User-facing text only from `CP-` IDs in spec.md; no improvised strings.
    - A decision the spec does not cover → `DR-nn` in `docs/DECISIONS.md` (with its index row) in the same
      commit. An AC that is wrong or impossible → stop and use `/speckit-blueprint-amend`; never implement

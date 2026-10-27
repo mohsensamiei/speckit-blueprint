@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 — 2026-10-28
+
+First release validated end to end with Claude Code: a Persian one-paragraph idea taken through
+discover (intake, research, decision brief, a 133 KB blueprint, lint clean), bootstrap, and four epics of
+compile → tasks → analyze → implement → review, every session started with "continue" only. Result:
+130/130 tasks ticked, 4 reviews DONE, 217 tests green at 97.8% coverage, no compiled file edited by hand.
+
+- The context hook requires ticking each task in tasks.md as soon as it is done (resume point and
+  progress source), never in bulk at the end.
+
 ## 0.1.1 — 2026-10-27
 
 From an end-to-end run with Claude Code (bootstrap → compile → tasks → analyze → implement → review):
