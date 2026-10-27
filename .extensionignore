@@ -1,0 +1,7 @@
+# Development-only files, not copied into projects by `specify extension add`
+.git/
+.github/
+.gitignore
+tests/
+__pycache__/
+*.pyc

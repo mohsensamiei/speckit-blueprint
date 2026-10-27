@@ -1,0 +1,37 @@
+# speckit-blueprint configuration. Every key is optional; defaults are shown.
+
+# Where the blueprint lives.
+blueprint_path: docs/BLUEPRINT.md
+
+# Where spec-kit feature folders live.
+specs_dir: specs
+
+# Blueprint sections compiled into .specify/memory/constitution.md
+# (read by /speckit-tasks and /speckit-implement in every epic, so keep it lean).
+constitution_sections:
+  - "13.2"
+  - "13.5"
+  - "13.6"
+  - "13.7"
+  - "13.9"
+  - "13.10"
+  - "14.2"
+  - "14.3"
+  - "14.8"
+  - "12.10"
+
+# Blueprint sections copied into each epic's plan.md "Technical Context".
+plan_sections:
+  - "12.2"
+  - "13.1"
+  - "13.3"
+  - "13.4"
+
+# IDs of these types found inside resolved flows, screens and edge cases are resolved too.
+second_level_types:
+  - CP
+  - EC
+
+# Block Edit/Write on compiled files (spec.md, plan.md, research.md, data-model.md,
+# quickstart.md, contracts/, constitution) in Claude Code.
+guard: true

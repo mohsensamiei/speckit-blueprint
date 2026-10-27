@@ -1,0 +1,92 @@
+schema_version: "1.0"
+
+extension:
+  id: blueprint
+  name: "Blueprint"
+  version: "0.1.0"
+  description: "Evidence-backed product discovery into one blueprint, compiled into spec-kit features one epic at a time (Claude Code)"
+  author: "Mohsen Samiei"
+  repository: "https://github.com/mohsensamiei/speckit-blueprint"
+  license: "MIT"
+  homepage: "https://github.com/mohsensamiei/speckit-blueprint"
+
+requires:
+  speckit_version: ">=1.2.0,<2.0.0"
+  tools:
+    - name: python3
+      version: ">=3.9"
+      required: true
+
+provides:
+  commands:
+    - name: speckit.blueprint.flow
+      file: commands/flow.md
+      description: "Drive a blueprint-driven project: read its state and run the right next step"
+    - name: speckit.blueprint.discover
+      file: commands/discover.md
+      description: "Turn an idea into an evidence-backed build blueprint (intake, research, decisions, epics)"
+    - name: speckit.blueprint.lint
+      file: commands/lint.md
+      description: "Lint the blueprint for the structural guarantees compile and build sessions rely on"
+    - name: speckit.blueprint.bootstrap
+      file: commands/bootstrap.md
+      description: "Compile the constitution, review checklist, decisions log and CLAUDE.md block from the blueprint"
+    - name: speckit.blueprint.compile
+      file: commands/compile.md
+      description: "Compile one blueprint epic into a spec-kit feature folder and make it active"
+    - name: speckit.blueprint.context
+      file: commands/context.md
+      description: "Load the active feature's spec and build rules before implementation (hook)"
+    - name: speckit.blueprint.review
+      file: commands/review.md
+      description: "Self-review an implemented epic against its ACs and the review checklist, then write the handoff"
+    - name: speckit.blueprint.amend
+      file: commands/amend.md
+      description: "Change the blueprint deliberately (A-nn amendment) and recompile the affected epics"
+    - name: speckit.blueprint.status
+      file: commands/status.md
+      description: "Show blueprint progress per epic and the next step"
+    - name: speckit.blueprint.guard
+      file: commands/guard.md
+      description: "Internal: Claude Code PreToolUse guard that blocks hand edits of compiled files"
+
+  config:
+    - name: "blueprint-config.yml"
+      template: "config-template.yml"
+      description: "Blueprint path, compiled sections and guard switch"
+      required: false
+
+hooks:
+  before_implement:
+    command: speckit.blueprint.context
+    optional: false
+    description: "Load spec.md (ACs, copy, edge cases) and the build rules; implement does not read spec.md itself"
+  after_implement:
+    command: speckit.blueprint.review
+    optional: false
+    description: "Self-review against the review checklist and write review.md (handoff)"
+  before_specify:
+    command: speckit.blueprint.flow
+    optional: true
+    prompt: "This project is built from a blueprint. Compile the next epic instead of writing a free-form spec?"
+    description: "Redirect free-form specs to the blueprint flow"
+
+events:
+  session_start:
+    command: speckit.blueprint.status
+    timeout: 20
+  pre_tool_use:
+    command: speckit.blueprint.guard
+    matcher: "Edit|Write|MultiEdit|NotebookEdit"
+    timeout: 10
+
+tags:
+  - "blueprint"
+  - "discovery"
+  - "research"
+  - "planning"
+  - "claude"
+
+defaults:
+  blueprint_path: "docs/BLUEPRINT.md"
+  guard: true
