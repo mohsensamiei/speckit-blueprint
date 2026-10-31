@@ -38,7 +38,9 @@ Version 0.3.0 was run end to end twice more, every step a fresh headless Claude 
 | Scenario | Outcome |
 |---|---|
 | Idea → blueprint → E00, E01 built → a feature idea on the same blueprint (amendment A-01, new E02) → built | 3/3 epics reviewed `Status: DONE`; the change under the finished E01 was reported and decided by the user, not recompiled silently |
-| A tip calculator built with plain Spec Kit (own constitution, 29 tasks) → extension installed → history feature through it | Constitution principles and version untouched (managed block added, version bump left to the user); brownfield discover cited the repository and planned a Baseline E00; 3/3 epics `DONE`, 69 tests green; the hand-written feature untouched by the hooks |
+| A tip calculator built with plain Spec Kit (own constitution, 29 tasks) → extension installed → history feature through it | Constitution principles untouched (managed block added); brownfield discover cited the repository and planned a Baseline E00; 3/3 epics `DONE`, 69 tests green; the hand-written feature untouched by the hooks |
+
+| A planning repository with a five-principle constitution and two code repositories (provider `core`, consumer `cli`), a finished multi-repo feature, then a cross-repo feature through the extension | Every task carried `[core]`/`[cli]`; the core epic came before the cli epic; analyze caught a task touching two repositories; a contradiction between an AC and a decision went through amendment A-01 to the backward-compatible option the constitution required; specs only in the planning repository; 3/3 epics `DONE`, both gates green |
 
 Every human gate held: manual checks waited for a person, amendments waited for approval, and no
 session committed.
@@ -76,8 +78,9 @@ there is to turn a new idea into epics; everything that exists stays the project
 
 - **Constitution.** Bootstrap does not rewrite a constitution the project wrote. It adds one managed block
   (`speckit-blueprint:rules`, before `## Governance`) that applies only to features compiled from the
-  blueprint and yields to the project's principles. The project's version line is not touched; the guard
-  protects only that block. Set `constitution_mode` in the config to force `own` or `append`.
+  blueprint and yields to the project's principles. Adding or changing the block is recorded the Spec Kit
+  way: the version goes up (minor by default; `constitution_version_bump`), Last Amended is set and the
+  Sync Impact Report gets a line. The guard protects only that block. Set `constitution_mode` in the config to force `own` or `append`.
 - **Existing features.** The `before_implement` and `after_implement` hooks return at once for any feature
   folder without `.blueprint.json`, so features written by hand keep their usual flow. Compiled epics
   continue the project's feature numbering.
@@ -88,6 +91,12 @@ there is to turn a new idea into epics; everything that exists stays the project
 - **Discovery.** With no blueprint and an existing product, discover runs in brownfield mode: the
   repository is the first source, what exists is summarised rather than re-decided, and the blueprint
   covers only the new idea.
+- **Several repositories.** When specs live in one planning repository and code in sibling ones, discover
+  reads the project's rules (task prefixes such as `[core]`, provider-first contract changes) and the
+  stories and task seeds follow them; specs stay in the planning repository. Claude Code asks before each
+  command in a sibling repository, so add them to `.claude/settings.local.json` of the planning repository
+  (`permissions.additionalDirectories`, plus `allow` rules for their read-only git commands and gates).
+  An epic's precondition is a clean tree, so commit the previous epic's work (with your approval) first.
 - **Session start.** Without a blueprint, the status hook says nothing in a project that already has
   features or its own constitution.
 

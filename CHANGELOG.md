@@ -6,7 +6,7 @@ Safe to add to an existing Spec Kit project, and easy to keep in step with idea-
 
 - Bootstrap keeps a constitution the project wrote and maintains one managed `speckit-blueprint:rules`
   block in it, scoped to blueprint features and yielding to the project's principles; the project's
-  version line is untouched. `constitution_mode: auto|own|append` in the config. A constitution that is
+  `constitution_mode: auto|own|append` in the config. A constitution that is
   missing or still the `specify init` template is compiled whole, as before.
 - The guard protects only that block in a project-owned constitution; the rest stays editable.
 - An existing `docs/REVIEW-CHECKLIST.md` is no longer overwritten.
@@ -26,6 +26,11 @@ Safe to add to an existing Spec Kit project, and easy to keep in step with idea-
 - The commands say that `check` is the project's gate command from plan.md, not a `blueprint.py`
   subcommand.
 - The lint wrapper no longer writes `__pycache__` into `upstream/`.
+- In append mode, adding or changing the managed block bumps the project's constitution version
+  (`constitution_version_bump: minor|patch|none`), sets Last Amended and adds a Sync Impact Report line;
+  the user no longer has to do it by hand.
+- Brownfield discover checks each decision and AC against the project's principles, so an AC that keeps
+  existing tests unchanged cannot sit next to a decision that changes what they observe.
 
 ## 0.2.0 — 2026-10-28
 
