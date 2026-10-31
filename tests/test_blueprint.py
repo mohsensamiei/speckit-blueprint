@@ -222,6 +222,93 @@ class HookTest(ProjectTest):
         self.assertIn("/speckit-blueprint-bootstrap", out)
 
 
+PROJECT_CONSTITUTION = """# Evida Constitution
+
+## Core Principles
+
+### I. One planning home
+Every change, however small, is recorded as a Spec Kit task first.
+
+## Governance
+
+Amendments need two approvals.
+
+**Version**: 2.3.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-09-01
+"""
+
+
+class AdoptTest(ProjectTest):
+    """An existing Spec Kit project: its constitution, checklist and features stay its own."""
+
+    def setUp(self):
+        super().setUp()
+        self.cpath = self.tmp / ".specify" / "memory" / "constitution.md"
+        self.cpath.write_text(PROJECT_CONSTITUTION, encoding="utf-8")
+        (self.tmp / "docs" / "REVIEW-CHECKLIST.md").write_text("# Our checklist\n- [ ] Two reviewers\n")
+        (self.tmp / "specs" / "001-existing-work").mkdir(parents=True)
+
+    def test_bootstrap_appends_a_managed_block(self):
+        out = self.json_cli("bootstrap")
+        self.assertEqual(out["constitution"]["mode"], "append")
+        c = self.cpath.read_text(encoding="utf-8")
+        before, rest = c.split("<!-- speckit-blueprint:rules:start -->")
+        block, after = rest.split("<!-- speckit-blueprint:rules:end -->")
+        self.assertEqual(before, PROJECT_CONSTITUTION.split("## Governance")[0])
+        self.assertTrue(after.lstrip().startswith("## Governance"))
+        self.assertIn("**Version**: 2.3.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-09-01", after)
+        self.assertIn("### B-I. The blueprint is the source of truth", block)
+        self.assertIn("the principles above win", block)
+        self.assertIn("No ORMs.", block)
+        self.assertEqual((self.tmp / "docs" / "REVIEW-CHECKLIST.md").read_text(), "# Our checklist\n- [ ] Two reviewers\n")
+        self.assertEqual(self.json_cli("status")["constitution"], "appended")
+        self.assertEqual(self.json_cli("status")["next"]["command"], "speckit-blueprint-compile")
+        # compile continues the project's numbering
+        self.assertEqual(self.json_cli("compile", "E00")["feature_directory"], "specs/002-e00-foundation")
+
+        # idempotent; a project edit outside the block survives a re-run
+        self.cpath.write_text(c.replace("however small", "however small (agreed 2026)"), encoding="utf-8")
+        self.json_cli("bootstrap")
+        c2 = self.cpath.read_text(encoding="utf-8")
+        self.assertIn("however small (agreed 2026)", c2)
+        self.assertEqual(c2.count("speckit-blueprint:rules:start"), 1)
+        # a blueprint change rewrites only the block
+        bp = self.tmp / "docs" / "BLUEPRINT.md"
+        bp.write_text(bp.read_text(encoding="utf-8").replace("No ORMs.", "No ORMs. No GraphQL."), encoding="utf-8")
+        self.json_cli("bootstrap")
+        c3 = self.cpath.read_text(encoding="utf-8")
+        self.assertIn("No GraphQL.", c3)
+        self.assertIn("**Version**: 2.3.0", c3)
+
+    def test_guard_protects_only_the_block(self):
+        self.json_cli("bootstrap")
+        text = self.cpath.read_text(encoding="utf-8")
+
+        def guard(tool, ti):
+            ti = {"file_path": str(self.cpath), **ti}
+            return self.run_cli("hook", "guard", stdin=json.dumps({"tool_name": tool, "tool_input": ti}), check=False).returncode
+
+        self.assertEqual(guard("Edit", {"old_string": "however small", "new_string": "x"}), 0)
+        self.assertEqual(guard("Edit", {"old_string": "No ORMs.", "new_string": "ORMs ok."}), 2)
+        self.assertEqual(guard("MultiEdit", {"edits": [{"old_string": "however small"}, {"old_string": "B-II."}]}), 2)
+        self.assertEqual(guard("Write", {"content": text.replace("however small", "x")}), 0)
+        self.assertEqual(guard("Write", {"content": text.replace("No ORMs.", "")}), 2)
+        self.assertEqual(guard("Write", {"content": PROJECT_CONSTITUTION}), 2)
+
+    def test_template_constitution_is_replaced(self):
+        self.cpath.write_text("# [PROJECT_NAME] Constitution\n", encoding="utf-8")
+        self.assertEqual(self.json_cli("bootstrap")["constitution"]["mode"], "own")
+        self.assertEqual(self.json_cli("status")["constitution"], "compiled")
+
+    def test_session_start_is_silent_without_a_blueprint(self):
+        (self.tmp / "docs" / "BLUEPRINT.md").unlink()
+        (self.tmp / ".specify" / "extensions" / "blueprint").mkdir(parents=True)
+        self.assertEqual(self.run_cli("hook", "session-start", stdin="{}").stdout, "")
+        # a fresh `specify init` project still gets the hint
+        shutil.rmtree(self.tmp / "specs")
+        self.cpath.write_text("# [PROJECT_NAME] Constitution\n", encoding="utf-8")
+        self.assertIn("/speckit-blueprint-discover", self.run_cli("hook", "session-start", stdin="{}").stdout)
+
+
 class LookupTest(ProjectTest):
     def test_section_and_find(self):
         self.assertIn("`npm run check`", self.run_cli("section", "13.4").stdout)

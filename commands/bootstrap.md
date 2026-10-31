@@ -26,15 +26,25 @@ $ARGUMENTS
    It writes, deterministically:
    - `.specify/memory/constitution.md` — five fixed principles (blueprint is the source of truth, evidence
      or silence, tests first and green gate, copy by ID and decisions by record, review before done) plus
-     the configured blueprint sections verbatim. Version bumps only when the content changed.
-   - `docs/REVIEW-CHECKLIST.md` — blueprint §14.4 verbatim.
+     the configured blueprint sections verbatim. Two modes (`constitution.mode` in the JSON):
+     - `own` (the constitution was missing or still the `specify init` template): the whole file is
+       compiled. Version bumps only when the content changed.
+     - `append` (the project already has its own constitution): the file stays the project's. Bootstrap
+       keeps one managed block between `speckit-blueprint:rules:start/end` markers, inserted before
+       `## Governance`. The block applies only to features compiled from the blueprint and yields to the
+       project's principles. The project's version line is not touched.
+   - `docs/REVIEW-CHECKLIST.md` — blueprint §14.4 verbatim, unless the project already has its own
+     checklist there (then it is left alone and the review hook uses it).
    - `docs/DECISIONS.md` — created once, with an index of the blueprint's DRs; sessions append to it.
    - `CLAUDE.md` — a managed block between `speckit-blueprint:start/end` markers; the rest of the file is
      left alone.
 3. If the JSON reports `missing_sections`, the blueprint lacks a section the config expects: fix the
    blueprint, or remove the number from `constitution_sections` in
    `.specify/extensions/blueprint/blueprint-config.yml` if it truly does not apply.
-4. Do not run `/speckit-constitution` afterwards: it would rewrite the compiled constitution from its
-   generic template.
+4. In `own` mode, do not run `/speckit-constitution` afterwards: it would rewrite the compiled
+   constitution from its generic template. In `append` mode the project may keep amending its own
+   principles as usual; if it ever drops the managed block, run bootstrap again.
+   If the project's governance requires a version bump or approval for constitution changes, tell the
+   user that the block was added or changed and let them follow it.
 5. Report the constitution size and version, and the next step from
    `python3 .specify/extensions/blueprint/scripts/blueprint.py status --brief`.

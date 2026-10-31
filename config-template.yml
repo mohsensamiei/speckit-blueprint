@@ -6,7 +6,7 @@ blueprint_path: docs/BLUEPRINT.md
 # Where spec-kit feature folders live.
 specs_dir: specs
 
-# Blueprint sections compiled into .specify/memory/constitution.md
+# Blueprint sections compiled into .specify/memory/constitution.md (or its managed block)
 # (read by /speckit-tasks and /speckit-implement in every epic, so keep it lean).
 constitution_sections:
   - "13.2"
@@ -19,6 +19,12 @@ constitution_sections:
   - "14.3"
   - "14.8"
   - "12.10"
+
+# own:    bootstrap writes the whole constitution (a new project).
+# append: the project keeps its constitution; bootstrap maintains one managed block in it, which applies
+#         only to features compiled from the blueprint and yields to the project's principles.
+# auto:   own when the constitution is missing or still the `specify init` template, otherwise append.
+constitution_mode: auto
 
 # Blueprint sections copied into each epic's plan.md "Technical Context".
 plan_sections:

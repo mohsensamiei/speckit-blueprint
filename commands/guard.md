@@ -11,7 +11,8 @@ run by hand.
 
 When an `Edit`, `Write`, `MultiEdit` or `NotebookEdit` targets a compiled file — `spec.md`, `plan.md`,
 `research.md`, `data-model.md`, `quickstart.md` or `contracts/*` inside a feature folder that has a
-`.blueprint.json`, or a constitution compiled by `/speckit-blueprint-bootstrap` — the hook exits with
+`.blueprint.json`, a constitution compiled by `/speckit-blueprint-bootstrap`, or the managed
+`speckit-blueprint:rules` block inside a project-owned constitution (the rest of that file stays editable) — the hook exits with
 code 2 and tells the agent to amend the blueprint and recompile instead. `tasks.md` and `review.md` stay
 editable.
 

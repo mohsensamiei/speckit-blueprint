@@ -39,6 +39,11 @@ TRACE_FILE = ".blueprint.json"
 GENERATED_MARK = "speckit-blueprint:generated"
 CLAUDE_START = "<!-- speckit-blueprint:start -->"
 CLAUDE_END = "<!-- speckit-blueprint:end -->"
+# Managed block inside a constitution the project owns (constitution_mode: append).
+RULES_START = "<!-- speckit-blueprint:rules:start -->"
+RULES_END = "<!-- speckit-blueprint:rules:end -->"
+# Placeholder that `specify init` leaves in its template constitution.
+TEMPLATE_MARK = "[PROJECT_NAME]"
 COMPILED_FILES = ("spec.md", "plan.md", "research.md", "data-model.md", "quickstart.md")
 
 DEFAULTS = {
@@ -51,6 +56,9 @@ DEFAULTS = {
     # Second-level resolution: IDs of these types found inside resolved definitions are
     # resolved too (a flow names its copy lines, an edge case names its copy lines).
     "second_level_types": ["CP", "EC"],
+    # own: bootstrap writes the whole constitution. append: it keeps the project's constitution and
+    # maintains one managed block in it. auto: own for a missing or template constitution, else append.
+    "constitution_mode": "auto",
     "guard": True,
 }
 
@@ -655,8 +663,8 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
     plan += [
         "## Constitution Check",
         "",
-        "The constitution (`.specify/memory/constitution.md`) was compiled from the same blueprint. "
-        "No violations are planned; any deviation needs a DR in `docs/DECISIONS.md` and, if it changes "
+        "The constitution (`.specify/memory/constitution.md`) holds the project's principles and the rules "
+        "bootstrap compiled from the same blueprint; this plan complies with both. No violations are planned; any deviation needs a DR in `docs/DECISIONS.md` and, if it changes "
         "behaviour, an amendment through `/speckit-blueprint-amend`.",
         "",
         "## Project Structure",
@@ -879,7 +887,17 @@ def constitution_state(root: Path) -> str:
     c = root / ".specify" / "memory" / "constitution.md"
     if not c.is_file():
         return "missing"
-    return "compiled" if GENERATED_MARK in c.read_text(encoding="utf-8") else "not-from-blueprint"
+    text = c.read_text(encoding="utf-8")
+    if RULES_START in text:
+        return "appended"
+    return "compiled" if GENERATED_MARK in text else "not-from-blueprint"
+
+
+def rules_span(text: str) -> tuple[int, int] | None:
+    """Character span of the managed rules block in a project-owned constitution, markers included."""
+    i = text.find(RULES_START)
+    j = text.find(RULES_END, i + 1) if i >= 0 else -1
+    return (i, j + len(RULES_END)) if i >= 0 and j >= 0 else None
 
 
 def project_status(root: Path, cfg: dict) -> dict:
@@ -939,7 +957,7 @@ def project_status(root: Path, cfg: dict) -> dict:
             d["epic"] = epic
         return d
 
-    if st["constitution"] != "compiled":
+    if st["constitution"] not in ("compiled", "appended"):
         st["next"] = nxt("speckit-blueprint-bootstrap", "Blueprint exists but the constitution and project files are not compiled from it yet.")
         return st
     for row in epics:
@@ -995,25 +1013,25 @@ def brief(st: dict) -> str:
 # Bootstrap
 
 
-FIXED_PRINCIPLES = """### I. The blueprint is the source of truth
-`{bp}` decides what is built. Specs under `{specs}/` are compiled from it and are never edited by hand.
+FIXED_PRINCIPLES = """### {n}I. The blueprint is the source of truth
+`{bp}` decides what is built. {scope} are compiled from it and are never edited by hand.
 When reality disagrees with the blueprint, the blueprint changes first, through `/speckit-blueprint-amend`
 (an `A-nn` entry in its Amendments log), and affected epics are recompiled. No silent deviation.
 
-### II. Evidence or silence
+### {n}II. Evidence or silence
 Every claim about the outside world (library, version, service, regulation) is verified or tagged
 `[ASSUMED]` / `[UNKNOWN → OQ-nn]`. Items tagged `[VERIFY-AT-BUILD]` are re-checked before code depends on them.
 
-### III. Tests first, gate always green
+### {n}III. Tests first, gate always green
 Each story's tests are written from its acceptance criteria and fail before the implementation exists.
 `check` stays green after every task. The gate is never weakened to make a change pass; if it must change,
 that is a decision record.
 
-### IV. Copy by ID, decisions by record
+### {n}IV. Copy by ID, decisions by record
 User-facing text comes from the blueprint's copy tables by `CP-` ID, never improvised. Any decision the
 blueprint does not cover is recorded as `DR-nn` in `docs/DECISIONS.md` in the same commit.
 
-### V. Review before done
+### {n}V. Review before done
 An epic is done only after `/speckit-blueprint-review` walked `docs/REVIEW-CHECKLIST.md` over its diff and
 wrote `review.md` with `Status: DONE`."""
 
@@ -1028,38 +1046,24 @@ def bump_version(old: str | None) -> str:
         return "1.0.0"
 
 
-def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
-    rel_bp = os.path.relpath(bp.path, root)
-    today = _dt.date.today().isoformat()
-    report = {}
-
-    # constitution
-    cpath = root / ".specify" / "memory" / "constitution.md"
-    old = cpath.read_text(encoding="utf-8") if cpath.is_file() else ""
+def own_constitution(old: str, rel_bp: str, bp: "Blueprint", content_sha: str, body: list[str], cfg: dict, today: str) -> str:
+    """The whole constitution, compiled from the blueprint (a new project)."""
     ver_m = re.search(r"\*\*Version\*\*:\s*([0-9.]+)", old) if GENERATED_MARK in old else None
     rat_m = re.search(r"\*\*Ratified\*\*:\s*([0-9-]+)", old) if GENERATED_MARK in old else None
-    body = []
-    missing = []
-    for key in cfg.get("constitution_sections") or []:
-        t = bp.section_text(str(key))
-        if t:
-            body += [demote(t, 3), ""]
-        else:
-            missing.append(str(key))
-    content_sha = sha("\n".join(body))
     old_sha = re.search(r"content-sha ([0-9a-f]+)", old)
     if ver_m and old_sha and old_sha.group(1) == content_sha:
         version = ver_m.group(1)
     else:
         version = bump_version(ver_m.group(1) if ver_m else None)
-    constitution = [
+    scope = f"Specs under `{cfg['specs_dir']}/`"
+    return "\n".join([
         f"<!-- {GENERATED_MARK} — constitution compiled from {rel_bp} (sha {bp.sha}, content-sha {content_sha}). "
         "Do not edit by hand: change the blueprint, then run /speckit-blueprint-bootstrap. -->",
         f"# {bp.title()} Constitution",
         "",
         "## Core Principles",
         "",
-        FIXED_PRINCIPLES.format(bp=rel_bp, specs=cfg["specs_dir"]),
+        FIXED_PRINCIPLES.format(n="", bp=rel_bp, scope=scope),
         "",
         "## Engineering Rules (from the blueprint)",
         "",
@@ -1072,16 +1076,79 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
         "",
         f"**Version**: {version} | **Ratified**: {rat_m.group(1) if rat_m else today} | **Last Amended**: {today}",
         "",
-    ]
+    ])
+
+
+def append_rules(old: str, rel_bp: str, bp_sha: str, content_sha: str, body: list[str], cfg: dict) -> str:
+    """A project-owned constitution with one managed block of blueprint rules; the rest is left alone."""
+    scope = f"Feature folders under `{cfg['specs_dir']}/` that contain `{TRACE_FILE}`"
+    block = "\n".join([
+        RULES_START,
+        f"<!-- Compiled from {rel_bp} (sha {bp_sha}, content-sha {content_sha}) by /speckit-blueprint-bootstrap. "
+        "Edit the blueprint, not this block; the rest of this file belongs to the project. -->",
+        "## Blueprint Rules (speckit-blueprint)",
+        "",
+        f"These rules apply only to features compiled from `{rel_bp}` (their folder contains `{TRACE_FILE}`). "
+        "Every other feature follows this project's own workflow. They add to the principles above and never "
+        "override them: where the two conflict, the principles above win.",
+        "",
+        FIXED_PRINCIPLES.format(n="B-", bp=rel_bp, scope=scope),
+        "",
+        "### Engineering rules from the blueprint",
+        "",
+        *body,
+        RULES_END,
+    ])
+    span = rules_span(old)
+    if span:
+        return old[: span[0]] + block + old[span[1]:]
+    m = re.search(r"^## Governance\b", old, re.M)
+    if m:
+        return old[: m.start()] + block + "\n\n" + old[m.start():]
+    return old.rstrip() + "\n\n" + block + "\n"
+
+
+def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
+    rel_bp = os.path.relpath(bp.path, root)
+    today = _dt.date.today().isoformat()
+    report = {}
+
+    # constitution
+    cpath = root / ".specify" / "memory" / "constitution.md"
+    old = cpath.read_text(encoding="utf-8") if cpath.is_file() else ""
+    body = []
+    missing = []
+    for key in cfg.get("constitution_sections") or []:
+        t = bp.section_text(str(key))
+        if t:
+            body += [demote(t, 3), ""]
+        else:
+            missing.append(str(key))
+    content_sha = sha("\n".join(body))
+    mode = cfg.get("constitution_mode") or "auto"
+    if mode == "auto":
+        owned = not old.strip() or TEMPLATE_MARK in old or (GENERATED_MARK in old and RULES_START not in old)
+        mode = "own" if owned else "append"
+    if mode == "append":
+        text = append_rules(old, rel_bp, bp.sha, content_sha, body, cfg)
+        report["constitution"] = {
+            "path": ".specify/memory/constitution.md", "mode": "append", "bytes": len(text.encode()),
+            "version": "unchanged (the project owns this constitution; bump it per its governance if needed)",
+            "missing_sections": missing,
+        }
+    else:
+        text = own_constitution(old, rel_bp, bp, content_sha, body, cfg, today)
+        version = re.search(r"\*\*Version\*\*:\s*([0-9.]+)", text).group(1)
+        report["constitution"] = {"path": ".specify/memory/constitution.md", "mode": "own", "bytes": len(text.encode()), "version": version, "missing_sections": missing}
     cpath.parent.mkdir(parents=True, exist_ok=True)
-    text = "\n".join(constitution)
     cpath.write_text(text, encoding="utf-8")
-    report["constitution"] = {"path": ".specify/memory/constitution.md", "bytes": len(text.encode()), "version": version, "missing_sections": missing}
 
     # review checklist
     rc = bp.section_text("14.4") or bp.section_text("Review checklist")
-    if rc:
-        p = root / "docs" / "REVIEW-CHECKLIST.md"
+    p = root / "docs" / "REVIEW-CHECKLIST.md"
+    if p.is_file() and GENERATED_MARK not in p.read_text(encoding="utf-8"):
+        report["review_checklist"] = "docs/REVIEW-CHECKLIST.md exists and is not generated; left unchanged"
+    elif rc:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(gen_header(rel_bp, bp.sha, "REVIEW-CHECKLIST.md") + "\n" + demote(rc, 1) + "\n", encoding="utf-8")
         report["review_checklist"] = "docs/REVIEW-CHECKLIST.md"
@@ -1135,13 +1202,42 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
 # Claude Code hooks
 
 
+def fresh_project(root: Path, cfg: dict) -> bool:
+    """No feature folders yet and no constitution beyond the `specify init` template."""
+    specs = root / cfg["specs_dir"]
+    if specs.is_dir() and any(d.is_dir() for d in specs.iterdir()):
+        return False
+    c = root / ".specify" / "memory" / "constitution.md"
+    return not c.is_file() or TEMPLATE_MARK in c.read_text(encoding="utf-8")
+
+
+def touches_rules(ti: dict, text: str, span: tuple[int, int]) -> bool:
+    """Whether an Edit/MultiEdit/Write would change the managed rules block of the constitution."""
+    if "content" in ti:
+        new = ti.get("content") or ""
+        ns = rules_span(new)
+        return ns is None or new[ns[0]:ns[1]] != text[span[0]:span[1]]
+    olds = [ti.get("old_string")] + [e.get("old_string") for e in ti.get("edits") or []]
+    for o in olds:
+        if not o:
+            continue
+        i = text.find(o)
+        while i >= 0:
+            if i < span[1] and i + len(o) > span[0]:
+                return True
+            i = text.find(o, i + 1)
+    return False
+
+
 def hook_session_start(root: Path, cfg: dict) -> int:
     try:
         sys.stdin.read()
     except OSError:
         pass
-    if not (root / cfg["blueprint_path"]).is_file() and not (root / ".specify" / "extensions" / EXT_ID).is_dir():
-        return 0
+    if not (root / cfg["blueprint_path"]).is_file():
+        # Without a blueprint, speak only in a fresh project; an existing Spec Kit project keeps its own flow.
+        if not (root / ".specify" / "extensions" / EXT_ID).is_dir() or not fresh_project(root, cfg):
+            return 0
     try:
         print(brief(project_status(root, cfg)))
     except Exception as exc:  # a status failure must never block a session
@@ -1170,7 +1266,12 @@ def hook_guard(root: Path, cfg: dict) -> int:
     blocked = None
     if rel.as_posix() == ".specify/memory/constitution.md":
         c = root / rel
-        if c.is_file() and GENERATED_MARK in c.read_text(encoding="utf-8"):
+        text = c.read_text(encoding="utf-8") if c.is_file() else ""
+        span = rules_span(text)
+        if span:
+            if touches_rules(ti, text, span):
+                blocked = "its Blueprint Rules block is compiled from the blueprint (/speckit-blueprint-bootstrap); the rest of the file is yours"
+        elif GENERATED_MARK in text:
             blocked = "the constitution is compiled from the blueprint (/speckit-blueprint-bootstrap)"
     elif len(parts) >= 3 and parts[0] == cfg["specs_dir"] and (root / parts[0] / parts[1] / TRACE_FILE).is_file():
         inner = Path(*parts[2:]).as_posix()
