@@ -32,10 +32,10 @@ $ARGUMENTS
      - `append` (the project already has its own constitution): the file stays the project's. Bootstrap
        keeps one managed block between `speckit-blueprint:rules:start/end` markers, inserted before
        `## Governance`. The block applies only to features compiled from the blueprint and yields to the
-       project's principles. When the block is added or its rules change, bootstrap follows Spec Kit's
-       constitution governance for the project: it bumps the version (minor by default,
-       `constitution_version_bump` in the config), sets Last Amended to today and adds a line to the Sync
-       Impact Report. A re-run with unchanged rules changes nothing.
+       project's principles. When the block is added or its rules change, bootstrap bumps the version
+       (minor by default, `constitution_version_bump` in the config) and sets Last Amended to today. It does
+       not create a Sync Impact Report comment (Spec Kit removes that before the commit); it adds a line only
+       to one that is already open. A re-run with unchanged rules changes nothing.
    - `docs/REVIEW-CHECKLIST.md` — blueprint §14.4 verbatim, unless the project already has its own
      checklist there (then it is left alone and the review hook uses it).
    - `docs/DECISIONS.md` — created once, with an index of the blueprint's DRs; sessions append to it.
@@ -48,7 +48,8 @@ $ARGUMENTS
 4. In `own` mode, do not run `/speckit-constitution` afterwards: it would rewrite the compiled
    constitution from its generic template. In `append` mode the project may keep amending its own
    principles as usual; if it ever drops the managed block, run bootstrap again.
-   Tell the user the version change from the JSON (`constitution.version`). If the project's governance
+   Tell the user the amendment from the JSON (`constitution.amendment`) so they can review it before
+   committing. If the project's governance
    asks for more than a version bump (an approval, a review), say so; bootstrap did not do that part.
 5. Report the constitution size and version, and the next step from
    `python3 .specify/extensions/blueprint/scripts/blueprint.py status --brief`.

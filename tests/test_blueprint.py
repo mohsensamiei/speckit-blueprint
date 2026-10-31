@@ -311,6 +311,17 @@ class AdoptTest(ProjectTest):
         self.assertIn("2.4.0 → 2.5.0", c3)
         self.assertIn("Blueprint Rules block updated", c3)
 
+    def test_no_sync_impact_report_is_created(self):
+        # Spec Kit removes the report before committing an amendment; bootstrap must not leave a new one behind
+        self.cpath.write_text(PROJECT_CONSTITUTION.split("-->\n", 1)[1], encoding="utf-8")
+        out = self.json_cli("bootstrap")
+        self.assertEqual(out["constitution"]["version"], "2.3.0 → 2.4.0")
+        self.assertIn("Blueprint Rules block added", out["constitution"]["amendment"])
+        c = self.cpath.read_text(encoding="utf-8")
+        self.assertNotIn("Sync Impact Report", c)
+        self.assertTrue(c.startswith("# Evida Constitution"))
+        self.assertIn("**Version**: 2.4.0", c)
+
     def test_version_bump_can_be_switched_off(self):
         cfg = self.tmp / ".specify" / "extensions" / "blueprint"
         cfg.mkdir(parents=True)

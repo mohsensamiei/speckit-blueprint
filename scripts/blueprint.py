@@ -66,8 +66,7 @@ DEFAULTS = {
     # maintains one managed block in it. auto: own for a missing or template constitution, else append.
     "constitution_mode": "auto",
     # append mode: when the managed block is added or its rules change, bump the project's constitution
-    # version (minor | patch | none), set Last Amended and add a Sync Impact Report line, as Spec Kit's
-    # constitution governance expects.
+    # version (minor | patch | none) and set Last Amended, as Spec Kit's constitution governance expects.
     "constitution_version_bump": "minor",
     "guard": True,
 }
@@ -1180,8 +1179,12 @@ def block_content_sha(text: str) -> str | None:
 
 
 def record_amendment(text: str, change: str, bump: str, rel_bp: str, today: str) -> tuple[str, str | None]:
-    """Follow the project's governance for a change to the managed block: bump the version, set Last
-    Amended, add a Sync Impact Report line. Returns the text and the version change ("1.1.0 → 1.2.0")."""
+    """Follow the project's governance for a change to the managed block: bump the version and set Last
+    Amended. Returns the text and the version change ("1.1.0 → 1.2.0").
+
+    Spec Kit treats the Sync Impact Report comment as scratch for reviewing one amendment, removed before
+    the commit, so none is created here; a line is added only to a report that is already open (an
+    amendment in progress), which is removed together with it."""
     m = VERSION_RE.search(text)
     if bump == "none" or not m:
         return text, None
@@ -1194,8 +1197,6 @@ def record_amendment(text: str, change: str, bump: str, rel_bp: str, today: str)
     rep_m = re.search(r"<!--\s*\n?\s*Sync Impact Report[^\n]*\n", text)
     if rep_m:
         text = text[: rep_m.end()] + line + "\n" + text[rep_m.end():]
-    else:
-        text = f"<!--\nSync Impact Report\n{line}\n-->\n" + text
     return text, f"{old} → {new}"
 
 
@@ -1231,6 +1232,7 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
             "path": ".specify/memory/constitution.md", "mode": "append", "bytes": len(text.encode()),
             "block": change or "unchanged",
             "version": version or "unchanged",
+            "amendment": (f"Blueprint Rules block {change}; version {version}" if change and version else None),
             "missing_sections": missing,
         }
     else:

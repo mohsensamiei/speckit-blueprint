@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 — 2026-10-31
+
+- Bootstrap no longer creates a Sync Impact Report comment in a project-owned constitution. Spec Kit
+  treats that comment as scratch for reviewing one amendment and removes it before the commit, so a new
+  one after every bootstrap was clutter to clean up. The version bump and Last Amended stay; the
+  amendment is reported in bootstrap's output (`constitution.amendment`), and a line is added only to a
+  report that is already open.
+
 ## 0.3.1 — 2026-10-31
 
 - The CLAUDE.md block no longer names `AGENTS.md`; it defers to the rest of CLAUDE.md and what it imports.

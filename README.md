@@ -15,7 +15,7 @@ The bridge is a deterministic compiler. `/speckit-blueprint-compile E03` resolve
 open questions, sources) to its definition in the blueprint and writes a spec-kit feature folder with
 exactly that. Build sessions never search the blueprint.
 
-Status: **0.3.1, Claude Code only.** Tested against Spec Kit 1.2.4.
+Status: **0.3.2, Claude Code only.** Tested against Spec Kit 1.2.4.
 
 ## Tested end to end
 
@@ -61,7 +61,7 @@ Requires Python 3.9+ and Spec Kit 1.2+.
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.4
 specify init my-product --integration claude
 cd my-product
-specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.3.1.zip
+specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.3.2.zip
 ```
 
 Installing from a URL asks for confirmation once (answer `y`). For development, install from a local
@@ -79,8 +79,9 @@ there is to turn a new idea into epics; everything that exists stays the project
 - **Constitution.** Bootstrap does not rewrite a constitution the project wrote. It adds one managed block
   (`speckit-blueprint:rules`, before `## Governance`) that applies only to features compiled from the
   blueprint and yields to the project's principles. Adding or changing the block is recorded the Spec Kit
-  way: the version goes up (minor by default; `constitution_version_bump`), Last Amended is set and the
-  Sync Impact Report gets a line. The guard protects only that block. Set `constitution_mode` in the config to force `own` or `append`.
+  way: the version goes up (minor by default; `constitution_version_bump`) and Last Amended is set. No
+  Sync Impact Report comment is left behind (Spec Kit removes it before the commit); bootstrap reports the
+  amendment instead. The guard protects only that block. Set `constitution_mode` in the config to force `own` or `append`.
 - **Existing features.** The `before_implement` and `after_implement` hooks return at once for any feature
   folder without `.blueprint.json`, so features written by hand keep their usual flow. Compiled epics
   continue the project's feature numbering.
