@@ -1,8 +1,9 @@
 speckit-blueprint includes material from idea-to-blueprint
-(https://github.com/iniesohidham/idea-to-blueprint, commit 38cbec9):
-references/*.md (except references/speckit-flow.md), scripts/lint_blueprint.py,
-and the method described in commands/discover.md. That material is used under
-the following license:
+(https://github.com/iniesohidham/idea-to-blueprint): everything under
+upstream/idea-to-blueprint/, copied unmodified at the commit recorded in
+upstream/UPSTREAM.json (its own LICENSE file is included there), and the method
+that commands/discover.md runs. That material is used under the following
+license:
 
 MIT License
 

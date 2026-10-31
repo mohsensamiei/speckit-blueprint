@@ -1,0 +1,32 @@
+{
+  "repository": "https://github.com/iniesohidham/idea-to-blueprint",
+  "commit": "38cbec9a8611bc687a89fcc4eb90897a5a2655ae",
+  "synced": "2026-10-31",
+  "include": [
+    "SKILL.md",
+    "LICENSE",
+    "references",
+    "scripts",
+    "assets"
+  ],
+  "files": {
+    "LICENSE": "829f00747d0c95279964a794e8c1c2ddea564e087876eea522d26a7bfd47ebc8",
+    "SKILL.md": "bbabd030b1c6e4f5e6403fed7b2b714ce4e4345d5cd034a571230b4dff99d556",
+    "assets/AGENTS.md.template": "93799a17848c03ebee8a86bcc9ffe20870c07c13750d61bca317bde777e39044",
+    "assets/CLAUDE.md.template": "93799a17848c03ebee8a86bcc9ffe20870c07c13750d61bca317bde777e39044",
+    "assets/DECISIONS.md.template": "2e8d13975476624d18e7fa4d7216f434179cee1c0fe7f4f773f0c8f64354477d",
+    "assets/PROGRESS.md.template": "3402413f86a5433eed7f730d90838665836571143b58854619e0957abdfd6bca",
+    "assets/session-prompt.md": "8cf7b48632f0b44f34398c4d901afb12c7e686c7e8f1ac2fdb06ba944004cab2",
+    "references/architecture-decisions.md": "7230635d3c7f38ef757be6e291302f9469694252ffe8cb9b578b24dab2569d20",
+    "references/blueprint-template.md": "cec740cfac2b80ff006f10a8a60c6052a8d0a1ee7fc448c4e858a48cd32a3fbf",
+    "references/code-quality-and-review.md": "2bd10e119c8cf41c5e41d5310aa3f1662b2619b262bc59855b374af347107f97",
+    "references/design-minimal.md": "644cdbf94d206e53f2b4f3017c60339fd04c67b87e0e0add4ccae2e3a349f370",
+    "references/edge-case-catalog.md": "acc522fc1f1df48616ea19d2688b26772b405187e76e71c67b27ac1cc312a1fb",
+    "references/intake-questions.md": "5ba7ecec59b8aa4dc66a439527a9c3df6b77f19fe2f735858b58692af8af07c9",
+    "references/research-protocol.md": "7edb21444bf172dc1e9ab47770de6020cd370d833c9ac69b4a988b12df98a6e7",
+    "references/session-protocol.md": "5d7e0b8d1ac1cd47da1d41ab62a8cecbf8b5aaa3019d733b25b0652d0fe41535",
+    "references/stories-ac-tests.md": "e03cb3b94d6af4d46ded9a654f69b81c6667f0ad40d7437f8ab802a56cb016ee",
+    "references/ux-writing-guide.md": "633da0b6ccc1277751bcb4ee87b7d24a5d3565c3ab0ac9e9e6e553a37a5715f0",
+    "scripts/lint_blueprint.py": "a86a19fe325bbfea630ad0d719df1987cfc14ad49fd753221520289f6d02198d"
+  }
+}

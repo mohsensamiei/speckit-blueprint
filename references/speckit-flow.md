@@ -1,7 +1,7 @@
 # Writing a blueprint for the spec-kit build flow
 
-The other references in this folder come from the idea-to-blueprint skill, where build sessions read the
-blueprint directly. In this extension they do not: `/speckit-blueprint-compile` extracts each epic and the
+The other references (`upstream/idea-to-blueprint/references/`) come from the idea-to-blueprint skill
+unmodified, and there build sessions read the blueprint directly. In this extension they do not: `/speckit-blueprint-compile` extracts each epic and the
 definitions it references into a spec-kit feature folder. Where this file and `blueprint-template.md`
 disagree, this file wins.
 
