@@ -57,6 +57,9 @@ skill's `references/blueprint-template.md` disagree, `speckit-flow.md` wins.
     outputs are in place, nothing else.
   - The project's rules shape the epics: if the constitution says tasks carry a repository prefix, or
     contracts change on the provider side first, stories and task seeds follow it.
+  - Check every decision and AC against the project's principles before writing them (backward
+    compatibility, data rules, gates). In particular, an AC that existing tests or callers must keep
+    passing unchanged cannot sit next to a decision that changes what they observe.
   - Compile continues the numbering of the existing feature folders; bootstrap keeps the project's
     constitution and adds a managed block to it.
 
