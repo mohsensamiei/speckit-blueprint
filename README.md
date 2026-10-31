@@ -87,18 +87,31 @@ there is to turn a new idea into epics; everything that exists stays the project
 - **Project rules.** The flow skill reads the constitution's own principles, `AGENTS.md` and `CLAUDE.md`
   first and follows them where they are stricter (for example, every change recorded as a task first).
 - **Existing files.** `docs/REVIEW-CHECKLIST.md` is left alone if the project has its own; `CLAUDE.md`
-  only gains a managed block; `docs/DECISIONS.md` is created only if missing.
+  only gains a managed block (or nothing, with `claude_md: false`); `docs/DECISIONS.md` is created only if
+  missing. All three paths and the blueprint's can move, for example under `specs/blueprint/`
+  (`blueprint_path`, `decisions_path`, `review_checklist_path`).
 - **Discovery.** With no blueprint and an existing product, discover runs in brownfield mode: the
   repository is the first source, what exists is summarised rather than re-decided, and the blueprint
   covers only the new idea.
 - **Several repositories.** When specs live in one planning repository and code in sibling ones, discover
   reads the project's rules (task prefixes such as `[core]`, provider-first contract changes) and the
-  stories and task seeds follow them; specs stay in the planning repository. Claude Code asks before each
+  stories and task seeds follow them; specs stay in the planning repository. If the constitution asks
+  every spec for a "Target Repositories" section and every plan for per-repository branches and
+  contracts, each epic carries `**Target repositories**` and `**Repositories**` header fields, and compile
+  writes them into those sections. Claude Code asks before each
   command in a sibling repository, so add them to `.claude/settings.local.json` of the planning repository
   (`permissions.additionalDirectories`, plus `allow` rules for their read-only git commands and gates).
   An epic's precondition is a clean tree, so commit the previous epic's work (with your approval) first.
 - **Session start.** Without a blueprint, the status hook says nothing in a project that already has
   features or its own constitution.
+
+### Next to the idea-to-blueprint skill
+
+The extension ships idea-to-blueprint's method unmodified, so the standalone skill is not needed in a Spec
+Kit project, but it does not have to be removed either: inside a project with the extension, the discover
+and flow skills say to use them instead, and in the end-to-end runs above (with idea-to-blueprint
+installed in `~/.claude/skills`) every session picked the extension's skills. Outside Spec Kit projects the
+standalone skill keeps working as before.
 
 ## How you use it
 

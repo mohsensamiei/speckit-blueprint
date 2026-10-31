@@ -29,6 +29,14 @@ Safe to add to an existing Spec Kit project, and easy to keep in step with idea-
 - In append mode, adding or changing the managed block bumps the project's constitution version
   (`constitution_version_bump: minor|patch|none`), sets Last Amended and adds a Sync Impact Report line;
   the user no longer has to do it by hand.
+- Multi-repository projects: optional epic header fields `**Target repositories**` and `**Repositories**`
+  compile into spec.md's "Target Repositories" and plan.md's "Repositories" sections (order, branches,
+  contracts per repository); brownfield discover writes them when the constitution asks for them.
+- `decisions_path`, `review_checklist_path` and `claude_md: false` in the config, for projects that keep
+  `docs/` for other material or whose CLAUDE.md only imports other files; `blueprint_path` can already
+  point under `specs/`.
+- The discover and flow skills say to use them instead of the idea-to-blueprint skill inside a Spec Kit
+  project with this extension; the two can stay installed side by side.
 - Brownfield discover checks each decision and AC against the project's principles, so an AC that keeps
   existing tests unchanged cannot sit next to a decision that changes what they observe.
 
