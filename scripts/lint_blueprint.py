@@ -26,6 +26,7 @@ DROPPED = (
 
 
 def load():
+    sys.dont_write_bytecode = True  # keep upstream/ byte-for-byte as shipped (no __pycache__ in it)
     spec = importlib.util.spec_from_file_location("idea_to_blueprint_lint", UPSTREAM)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod  # dataclasses resolve annotations through sys.modules

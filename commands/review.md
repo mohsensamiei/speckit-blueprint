@@ -16,6 +16,9 @@ $ARGUMENTS
 
 ## Steps
 
+`check` below is the project's own gate command, the one plan.md's Technical Context gives from blueprint
+§13.4 (for example `npm run check` or `python3 scripts/check.py`). It is not a `blueprint.py` subcommand.
+
 0. **Scope.** Read the active feature from `.specify/feature.json` (`feature_directory`). If that folder
    has no `.blueprint.json`, the feature was not compiled from the blueprint: this hook does not apply.
    Say nothing, change nothing, and return to the caller. Everything below is for blueprint

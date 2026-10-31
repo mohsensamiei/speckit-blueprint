@@ -31,6 +31,9 @@ The JSON has `state`, `constitution`, `active_feature`, one row per epic (`state
 stale, tasked, in-progress, implemented, done) and `next` (`command`, `epic`, `why`, `new_session`,
 optional `activate`). Do not read `docs/BLUEPRINT.md` to work this out.
 
+`check` means the project's gate command (blueprint §13.4, repeated in each plan.md), not a
+`blueprint.py` subcommand.
+
 ## 2. Classify the request
 
 | The user… | Do |

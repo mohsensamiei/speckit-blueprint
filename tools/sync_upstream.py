@@ -76,7 +76,7 @@ def resolve(ref: str | None) -> str:
 def files_of(base: Path) -> dict[str, str]:
     out = {}
     for p in sorted(base.rglob("*")):
-        if p.is_file():
+        if p.is_file() and "__pycache__" not in p.parts:
             out[p.relative_to(base).as_posix()] = hashlib.sha256(p.read_bytes()).hexdigest()
     return out
 
