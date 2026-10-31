@@ -20,6 +20,12 @@ Safe to add to an existing Spec Kit project, and easy to keep in step with idea-
   `upstream/UPSTREAM.json`, still commit `38cbec9`). `discover.md` runs its `SKILL.md` with listed
   overrides, and the linter change became a wrapper. `tools/sync_upstream.py` updates the copy and
   reports the anchors the extension relies on; tests and a weekly workflow catch drift.
+- `blueprint.py accept Enn --note "…"` records that a built epic stays as built after a blueprint change
+  (for example, covered by a later epic), so status stops reporting it; `amend` uses it after the user
+  decides.
+- The commands say that `check` is the project's gate command from plan.md, not a `blueprint.py`
+  subcommand.
+- The lint wrapper no longer writes `__pycache__` into `upstream/`.
 
 ## 0.2.0 — 2026-10-28
 

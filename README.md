@@ -30,7 +30,18 @@ from nothing to a finished v1 with this extension and Claude Code (Sonnet), ever
 | 4 epics × (plan session + build session) | 130/130 tasks ticked one by one, every epic reviewed `Status: DONE`, 217 tests green at 97.8% coverage |
 | Human gates | One manual terminal check (RTL column alignment) stopped the flow until the user confirmed; no commit or push without approval |
 
-Total model cost of the whole run was about $13 on Sonnet, discovery included.
+The whole run used about $13 of Sonnet usage at API prices, discovery included, as Claude Code reports it
+(`total_cost_usd`). On a Claude subscription this counts against the plan's usage limits, not a separate bill.
+
+Version 0.3.0 was run end to end twice more, every step a fresh headless Claude Code session (Sonnet):
+
+| Scenario | Outcome |
+|---|---|
+| Idea → blueprint → E00, E01 built → a feature idea on the same blueprint (amendment A-01, new E02) → built | 3/3 epics reviewed `Status: DONE`; the change under the finished E01 was reported and decided by the user, not recompiled silently |
+| A tip calculator built with plain Spec Kit (own constitution, 29 tasks) → extension installed → history feature through it | Constitution principles and version untouched (managed block added, version bump left to the user); brownfield discover cited the repository and planned a Baseline E00; 3/3 epics `DONE`, 69 tests green; the hand-written feature untouched by the hooks |
+
+Every human gate held: manual checks waited for a person, amendments waited for approval, and no
+session committed.
 
 ## Why
 
@@ -136,6 +147,7 @@ blueprint.py find ENT-Order SCR-04     # print definitions by ID
 blueprint.py lint                      # structural linter, then refs
 blueprint.py refs                      # unresolved IDs per epic (exit 1 if any)
 blueprint.py stale                     # compiled epics whose blueprint text changed
+blueprint.py accept E01 --note "…"     # a built epic stays as built after a blueprint change
 ```
 
 ## Development
