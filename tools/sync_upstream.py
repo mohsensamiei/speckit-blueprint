@@ -9,7 +9,7 @@ Usage (from the repository root):
 
     python3 tools/sync_upstream.py            sync to upstream's default branch
     python3 tools/sync_upstream.py <ref>      sync to a tag, branch or commit
-    python3 tools/sync_upstream.py --check    exit 1 if upstream has moved past the pinned commit
+    python3 tools/sync_upstream.py --check    exit 1 if upstream has moved past the pinned commit (2: unreachable)
     python3 tools/sync_upstream.py --verify   exit 1 if the vendored files differ from UPSTREAM.json
 
 After a sync, run the tests: they check that the anchors this extension relies on (SKILL.md phases,
@@ -171,7 +171,11 @@ def main(argv: list[str]) -> int:
         return 1 if problems else 0
     if argv[:1] == ["--check"]:
         pinned = json.loads(MANIFEST.read_text(encoding="utf-8"))["commit"]
-        head = resolve(None)
+        try:
+            head = resolve(None)
+        except OSError as exc:  # exit 2, so a network failure is not reported as "upstream moved"
+            print(f"could not reach GitHub: {exc}")
+            return 2
         if head == pinned:
             print(f"up to date ({pinned[:7]})")
             return 0

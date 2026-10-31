@@ -1,0 +1,45 @@
+name: upstream
+
+# Weekly: has idea-to-blueprint moved past the commit pinned in upstream/UPSTREAM.json?
+# If so, open one issue (not one per week) saying to run tools/sync_upstream.py.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - id: check
+        run: |
+          set +e
+          out=$(python tools/sync_upstream.py --check)
+          code=$?
+          echo "$out"
+          echo "message=$out" >> "$GITHUB_OUTPUT"
+          echo "behind=$([ $code -eq 1 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          [ $code -le 1 ]
+      - if: steps.check.outputs.behind == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MESSAGE: ${{ steps.check.outputs.message }}
+        run: |
+          title="Sync idea-to-blueprint upstream"
+          if gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number' | grep -q .; then
+            echo "An open issue already tracks this."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$MESSAGE
+
+          Run \`python3 tools/sync_upstream.py\`, then \`python3 -m unittest discover -s tests -v\`, and review
+          \`git diff -- upstream/\` against \`commands/discover.md\` and \`references/speckit-flow.md\`."
