@@ -1,11 +1,17 @@
 ---
-description: "Use for any request in a project that has docs/BLUEPRINT.md or the blueprint extension: a new product idea, 'continue', 'next step', 'build the next epic', 'where are we', or a change to features, scope, acceptance criteria or copy. Reads the project state and runs the right blueprint or spec-kit step instead of free-form coding."
+description: "Use when the user shares a new product or feature idea to turn into a blueprint and epics, or, in a project with docs/BLUEPRINT.md, for 'continue', 'next step', 'build the next epic', 'where are we' or a change to a blueprint epic's scope, acceptance criteria or copy. Reads the project state and runs the right blueprint or spec-kit step. Not for features that were not compiled from the blueprint: those follow the project's own workflow."
 ---
 
 # Blueprint flow
 
-You are the conductor of a blueprint-driven project. The user talks in plain language; you decide which
-step runs next. You never skip a step, and you never edit compiled spec files by hand.
+You are the conductor of the blueprint-driven part of a project. The user talks in plain language; you
+decide which step runs next. You never skip a step, and you never edit compiled spec files by hand.
+
+The project's own rules come first. Before acting, check `.specify/memory/constitution.md` (its principles
+outside the `speckit-blueprint:rules` block), `AGENTS.md` and `CLAUDE.md`. Where they set a stricter or
+different rule (every change is recorded as a task first, tasks name their repository, extra approvals),
+follow them; this skill fills in only what they leave open. Features whose folder has no `.blueprint.json`
+are not this skill's business.
 
 ## User Input
 
@@ -29,12 +35,13 @@ optional `activate`). Do not read `docs/BLUEPRINT.md` to work this out.
 
 | The user… | Do |
 |---|---|
-| shares a new idea and there is no blueprint (`state: no-blueprint`) | run `/speckit-blueprint-discover` with the idea |
+| shares a new idea and there is no blueprint (`state: no-blueprint`) | run `/speckit-blueprint-discover` with the idea (it picks brownfield mode by itself when the repository already has a product) |
 | shares a new idea or big new scope and a blueprint exists | run `/speckit-blueprint-discover` in incremental mode (it adds epics to the existing blueprint) |
 | wants to change behaviour, an AC, copy, data, scope of a planned epic, or reports that the spec is wrong | run `/speckit-blueprint-amend` with their words |
 | says continue / next / go / build, or asks what is next | follow `next` from the status (section 3) |
 | asks where things stand | print the status as a short table (epic, state, tasks) and the next step; stop |
-| asks for a small fix to already-built code that does not change any AC | do it directly, run `check`, record nothing in the blueprint |
+| asks for a small fix to already-built code that does not change any AC | record nothing in the blueprint; handle it the way the project's rules say (if they require a task or spec for every change, create it first). Only when they say nothing: do it directly and run `check` |
+| works on a feature without `.blueprint.json`, or on the project's normal work | leave it to the project's own Spec Kit workflow; do not redirect it to the blueprint |
 
 When unsure whether a request changes the product, treat it as an amendment and ask.
 
@@ -43,6 +50,8 @@ When unsure whether a request changes the product, treat it as an amendment and 
 - `speckit-blueprint-bootstrap` → run it.
 - `speckit-blueprint-compile` (with `epic`) → run `/speckit-blueprint-compile <epic>`, then continue with
   `/speckit-tasks` and `/speckit-analyze` in the same session (they are cheap).
+  If this runs as the `before_specify` hook and the user's request is not a blueprint epic, return at once
+  and let `/speckit-specify` continue.
 - `speckit-tasks` → run `/speckit-tasks`, then `/speckit-analyze`. If analyze finds a defect in spec.md,
   plan.md or the data model, that is an amendment; if it finds a defect only in tasks.md, fix tasks.md.
 - `speckit-implement` → if `next.activate` is set, first write it to `.specify/feature.json` as

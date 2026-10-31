@@ -16,6 +16,10 @@ $ARGUMENTS
 
 ## Steps
 
+0. **Scope.** Read the active feature from `.specify/feature.json` (`feature_directory`). If that folder
+   has no `.blueprint.json`, the feature was not compiled from the blueprint: this hook does not apply.
+   Say nothing, change nothing, and return to `/speckit-implement`. Everything below is for blueprint
+   features only.
 1. Find the active feature:
 
    ```bash
@@ -43,6 +47,8 @@ $ARGUMENTS
    - Read source files over 200 lines by range (`grep -n` first). Do not re-read files you have not changed.
      For anything outside the feature folder use `blueprint.py section <n>` or `blueprint.py find <ID>`,
      not the whole blueprint.
+   - The project's own rules still hold: where the constitution's own principles, `AGENTS.md` or
+     `CLAUDE.md` are stricter (task format, which repository a task runs in, approvals), follow them.
    - Blueprint lines that mention `PROGRESS.md` map to this flow: story and AC evidence go to the ticked
      tasks in `tasks.md` and to `review.md`.
 5. If the session is already long (another epic was built in it, or you are past a few hundred thousand

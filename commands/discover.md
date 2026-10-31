@@ -34,6 +34,24 @@ $ARGUMENTS
   existing number, add new epics after the last one, add rows to the Amendments log, and do not rewrite
   decided sections unless the addition forces it (then that is an amendment: `/speckit-blueprint-amend`).
 
+- **Existing product (brownfield)** — no blueprint yet, but the repository already has a product: code,
+  feature folders under `specs/`, a constitution of its own, or product docs. The blueprint covers only
+  the new idea, turned into epics that fit what exists. Differences from new-product mode:
+  - The repository is the first source. Read the constitution, `AGENTS.md`/`CLAUDE.md`, the README and
+    product docs, and the existing specs before intake; cite them as `[VERIFIED — repo:<path>]`. Ask
+    only what they do not answer.
+  - Do not re-decide what exists. Stack, architecture, gate, conventions and module map are summarised
+    from the repository with paths, not researched afresh; research covers only what the idea adds (a
+    new integration, a competitor benchmark for the new capability, a library it needs).
+  - Never invent the existing product. A section the repository does not document is
+    `[UNKNOWN → OQ-nn]`, not a plausible description.
+  - Epic 00 is a short **Baseline** epic, not a scaffold: the existing gate is green, bootstrap's
+    outputs are in place, nothing else.
+  - The project's rules shape the epics: if the constitution says tasks carry a repository prefix, or
+    contracts change on the provider side first, stories and task seeds follow it.
+  - Compile continues the numbering of the existing feature folders; bootstrap keeps the project's
+    constitution and adds a managed block to it.
+
 ## Why this document has to be different
 
 A build session has two sources of truth: the repo and what compile gives it from this blueprint. Whatever

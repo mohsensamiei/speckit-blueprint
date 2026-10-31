@@ -16,18 +16,23 @@ $ARGUMENTS
 
 ## Steps
 
+0. **Scope.** Read the active feature from `.specify/feature.json` (`feature_directory`). If that folder
+   has no `.blueprint.json`, the feature was not compiled from the blueprint: this hook does not apply.
+   Say nothing, change nothing, and return to the caller. Everything below is for blueprint
+   features only.
 1. Active feature: `feature_directory` in `.specify/feature.json`. Epic ID: `epic` in
    `<feature>/.blueprint.json`. Base of the epic's diff: the commit before its first task (ask git:
    `git log --oneline -- <feature>/tasks.md` and the epic branch, if one exists).
 
 2. **Gate.** Run the full `check` and the epic-level tests from `<feature>/quickstart.md`. Run the whole
-   regression suite. Red → fix, do not continue with red.
+   regression suite. If the project spans several repositories, run the gate of every repository the
+   epic's tasks touched, as the project's rules define it. Red → fix, do not continue with red.
 
 3. **Coverage of the spec.** For every story in `<feature>/spec.md`, for every `AC-n`: name the passing
    test that proves it, or the manual check (with date and observation). An AC with neither is not done.
    Check the story's **Edge cases** the same way.
 
-4. **Checklist.** Walk `docs/REVIEW-CHECKLIST.md` over the diff, story by story, and answer every item.
+4. **Checklist.** Walk `docs/REVIEW-CHECKLIST.md` (the project's own, if it has one) over the diff, story by story, and answer every item.
    Fix what fails instead of noting it. Pay particular attention to the agent-code failure profile:
    invented APIs (every external symbol must trace to a pinned dependency), duplicated helpers the codebase
    already had, authorization and input-handling defects behind clean code, and tests that assert too

@@ -60,16 +60,16 @@ hooks:
   before_implement:
     command: speckit.blueprint.context
     optional: false
-    description: "Load spec.md (ACs, copy, edge cases) and the build rules; implement does not read spec.md itself"
+    description: "For blueprint features only: load spec.md (ACs, copy, edge cases) and the build rules"
   after_implement:
     command: speckit.blueprint.review
     optional: false
-    description: "Self-review against the review checklist and write review.md (handoff)"
+    description: "For blueprint features only: self-review against the review checklist and write review.md"
   before_specify:
     command: speckit.blueprint.flow
     optional: true
-    prompt: "This project is built from a blueprint. Compile the next epic instead of writing a free-form spec?"
-    description: "Redirect free-form specs to the blueprint flow"
+    prompt: "Is this feature an epic of docs/BLUEPRINT.md? If so, compile it instead of writing a free-form spec"
+    description: "Offer to compile a blueprint epic instead of a free-form spec; other features continue as usual"
 
 events:
   session_start:
