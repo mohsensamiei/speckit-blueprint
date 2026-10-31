@@ -161,6 +161,24 @@ class StatusTest(ProjectTest):
         e01 = next(e for e in self.state()["epics"] if e["epic"] == "E01")
         self.assertEqual(e01["state"], "stale")
 
+    def test_accept_keeps_a_built_epic(self):
+        self.json_cli("bootstrap")
+        self.json_cli("compile", "E01")
+        (self.feature() / "tasks.md").write_text("- [x] T001 a\n")
+        (self.feature() / "review.md").write_text("Status: DONE\n")
+        bp = self.tmp / "docs" / "BLUEPRINT.md"
+        bp.write_text(bp.read_text(encoding="utf-8").replace("| CP-SCR01-2 | Button | ثبت |", "| CP-SCR01-2 | Button | ذخیره |"), encoding="utf-8")
+        self.assertEqual([s["epic"] for s in self.json_cli("stale")], ["E01"])
+        self.assertNotEqual(self.run_cli("accept", "E01", check=False).returncode, 0)  # a note is required
+        out = self.json_cli("accept", "E01", "--note", "covered by E02 (A-01)")
+        self.assertIn("SCR-01", out["accepted"])
+        self.assertEqual(self.json_cli("stale"), [])
+        e01 = next(e for e in self.state()["epics"] if e["epic"] == "E01")
+        self.assertNotIn("changed_since_compile", e01)
+        trace = json.loads((self.feature() / ".blueprint.json").read_text(encoding="utf-8"))
+        self.assertEqual(trace["accepted"][0]["note"], "covered by E02 (A-01)")
+        self.assertIn("ثبت", (self.feature() / "spec.md").read_text(encoding="utf-8"))  # compiled files untouched
+
     def test_no_blueprint(self):
         (self.tmp / "docs" / "BLUEPRINT.md").unlink()
         st = self.state()

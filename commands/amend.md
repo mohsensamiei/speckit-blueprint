@@ -50,7 +50,10 @@ $ARGUMENTS
      with `/speckit-tasks` (the old one no longer matches).
    - partly or fully built: do not recompile over finished work silently. Tell the user what changed under
      built code and propose either recompiling with `--force` and regenerating tasks (the implement step
-     then reworks only what changed), or a follow-up story in a later epic. The user decides.
+     then reworks only what changed), or a follow-up story in a later epic. The user decides. If they keep
+     the built epic as it is (the change is covered elsewhere, or does not affect the built code), record it
+     so status stops reporting the change:
+     `python3 .specify/extensions/blueprint/scripts/blueprint.py accept <Enn> --note "<why, e.g. covered by E04 (A-03)>"`.
    - If constitution sections changed, also run `/speckit-blueprint-bootstrap`.
 
 7. Report: the amendment ID, files and epics affected, what was recompiled, and what waits on the user.

@@ -13,6 +13,7 @@ Usage (from the project root; the extension installs this file under
     blueprint.py section 14.4 [13.4 ...]     print blueprint sections by number (read less, not all)
     blueprint.py find ENT-Order [SCR-03 ...] print the blueprint definitions of IDs
     blueprint.py stale                       compiled epics whose blueprint text changed since compile
+    blueprint.py accept E01 --note "…"       record that a built epic stays as built after a blueprint change
     blueprint.py refs                        per epic: IDs that compile can or cannot resolve (exit 1 if any cannot)
     blueprint.py lint                        the structural linter, then refs
     blueprint.py epics                       epic and story IDs in blueprint order
@@ -850,6 +851,36 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
 # Status
 
 
+def accept_change(root: Path, cfg: dict, bp: "Blueprint", epic_key: str, note: str) -> dict:
+    """Mark the blueprint changes under a compiled epic as reviewed: the epic stays as built.
+
+    The trace's hashes move to the current blueprint text, so status stops reporting the change; the
+    compiled files are left as they were, and the decision is kept in the trace's `accepted` list.
+    """
+    eid = epic_key.upper() if epic_key.upper().startswith("E") else f"E{int(epic_key):02d}"
+    d = find_feature_dir(root, cfg, eid)
+    if d is None:
+        raise SystemExit(f"error: {eid} has no compiled feature folder")
+    tpath = d / TRACE_FILE
+    trace = json.loads(tpath.read_text(encoding="utf-8"))
+    changed = stale_units(bp, trace)
+    if not changed:
+        return {"epic": eid, "accepted": [], "note": "nothing changed since compile"}
+    epic = bp.epic(eid[1:])
+    if epic is None:
+        raise SystemExit(f"error: {eid} is no longer in the blueprint")
+    trace["epic_sha"] = sha(bp.epic_text(epic))
+    for ident in list((trace.get("units") or {}).keys()):
+        units = bp.defs.get(ident)
+        if units:
+            trace["units"][ident] = sha(units[0].text(bp.lines))
+    trace.setdefault("accepted", []).append({
+        "date": _dt.date.today().isoformat(), "blueprint_sha": bp.sha, "changed": changed, "note": note,
+    })
+    tpath.write_text(json.dumps(trace, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return {"epic": eid, "feature_directory": d.relative_to(root).as_posix(), "accepted": changed, "note": note}
+
+
 def task_counts(tasks: Path) -> tuple[int, int]:
     if not tasks.is_file():
         return (0, 0)
@@ -1348,6 +1379,15 @@ def main(argv: list[str]) -> int:
                 continue
             print(f"<!-- {ident} -->\n" + render_units(bp, [(ident, u) for u in units]) + "\n")
         return rc
+    if cmd == "accept":
+        keys = [a for a in args if not a.startswith("--")]
+        note = args[args.index("--note") + 1] if "--note" in args and args.index("--note") + 1 < len(args) else ""
+        if not keys or not note:
+            print('usage: blueprint.py accept E01 --note "why the built epic stays as it is"', file=sys.stderr)
+            return 1
+        keys = [k for k in keys if k != note]
+        print(json.dumps(accept_change(root, cfg, bp, keys[0], note), indent=2, ensure_ascii=False))
+        return 0
     if cmd == "stale":
         out = []
         for e in bp.epics:
