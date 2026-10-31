@@ -15,7 +15,7 @@ The bridge is a deterministic compiler. `/speckit-blueprint-compile E03` resolve
 open questions, sources) to its definition in the blueprint and writes a spec-kit feature folder with
 exactly that. Build sessions never search the blueprint.
 
-Status: **0.3.0, Claude Code only.** Tested against Spec Kit 1.2.4.
+Status: **0.3.1, Claude Code only.** Tested against Spec Kit 1.2.4.
 
 ## Tested end to end
 
@@ -61,7 +61,7 @@ Requires Python 3.9+ and Spec Kit 1.2+.
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.4
 specify init my-product --integration claude
 cd my-product
-specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.3.0.zip
+specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.3.1.zip
 ```
 
 Installing from a URL asks for confirmation once (answer `y`). For development, install from a local

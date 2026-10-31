@@ -17,5 +17,5 @@ epic at a time, with Spec Kit. Other features follow this project's own workflow
   unchanged files in the same session.
 - Decisions the blueprint does not cover: add a `DR-nn` to `{{DECISIONS}}` (index row too).
 - Start a fresh session for each epic's implementation.
-- Where this file's other sections, `AGENTS.md` or the constitution's own principles set a stricter
-  rule, that rule wins.
+- Where the rest of this file (and anything it imports) or the constitution's own principles set a
+  stricter rule, that rule wins.

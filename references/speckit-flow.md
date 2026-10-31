@@ -83,7 +83,8 @@ instead of the per-session runbook:
 
 Keep every item of `stories-ac-tests.md` §6 except item 5, which becomes: `docs/BLUEPRINT.md`,
 `docs/DECISIONS.md`, `docs/REVIEW-CHECKLIST.md`, the constitution and the `CLAUDE.md` block already exist
-(bootstrap); E00 verifies them, adds `AGENTS.md` only if another agent will work on the repo, and adds
+(bootstrap); E00 verifies them, adds `AGENTS.md` only if another agent will work on the repo and the
+project has none yet, and adds
 `.env.example` from Appendix B. Do not write stories or DoD lines that create or update PROGRESS.md; evidence
 goes to `tasks.md` and `review.md`.
 

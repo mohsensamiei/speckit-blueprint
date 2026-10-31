@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-10-31
+
+- The CLAUDE.md block no longer names `AGENTS.md`; it defers to the rest of CLAUDE.md and what it imports.
+- The flow and context commands name the project's agent instructions generically (`CLAUDE.md` and what it
+  imports, `AGENTS.md` where present).
+
 ## 0.3.0 — 2026-10-31
 
 Safe to add to an existing Spec Kit project, and easy to keep in step with idea-to-blueprint.

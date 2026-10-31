@@ -8,7 +8,8 @@ You are the conductor of the blueprint-driven part of a project. The user talks 
 decide which step runs next. You never skip a step, and you never edit compiled spec files by hand.
 
 The project's own rules come first. Before acting, check `.specify/memory/constitution.md` (its principles
-outside the `speckit-blueprint:rules` block), `AGENTS.md` and `CLAUDE.md`. Where they set a stricter or
+outside the `speckit-blueprint:rules` block) and the project's agent instructions (`CLAUDE.md` and whatever
+it imports, `AGENTS.md`, where present). Where they set a stricter or
 different rule (every change is recorded as a task first, tasks name their repository, extra approvals),
 follow them; this skill fills in only what they leave open. Features whose folder has no `.blueprint.json`
 are not this skill's business.

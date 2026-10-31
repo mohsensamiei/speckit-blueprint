@@ -197,6 +197,7 @@ class BootstrapTest(ProjectTest):
         claude = (self.tmp / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn("Keep me.", claude)
         self.assertEqual(claude.count("speckit-blueprint:start"), 1)
+        self.assertNotIn("AGENTS.md", claude)  # the block names no file the project may not have
         self.assertIn("Every AC has a test", (self.tmp / "docs" / "REVIEW-CHECKLIST.md").read_text(encoding="utf-8"))
         self.assertIn("| DR-01 | Integer rials | blueprint | accepted |", (self.tmp / "docs" / "DECISIONS.md").read_text(encoding="utf-8"))
 

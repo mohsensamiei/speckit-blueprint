@@ -54,8 +54,8 @@ $ARGUMENTS
    - Read source files over 200 lines by range (`grep -n` first). Do not re-read files you have not changed.
      For anything outside the feature folder use `blueprint.py section <n>` or `blueprint.py find <ID>`,
      not the whole blueprint.
-   - The project's own rules still hold: where the constitution's own principles, `AGENTS.md` or
-     `CLAUDE.md` are stricter (task format, which repository a task runs in, approvals), follow them.
+   - The project's own rules still hold: where the constitution's own principles or the project's agent
+     instructions (`CLAUDE.md` and whatever it imports, `AGENTS.md`, where present) are stricter (task format, which repository a task runs in, approvals), follow them.
    - Blueprint lines that mention `PROGRESS.md` map to this flow: story and AC evidence go to the ticked
      tasks in `tasks.md` and to `review.md`.
 5. If the session is already long (another epic was built in it, or you are past a few hundred thousand
