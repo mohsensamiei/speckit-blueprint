@@ -349,6 +349,62 @@ class AdoptTest(ProjectTest):
         self.assertIn("/speckit-blueprint-discover", self.run_cli("hook", "session-start", stdin="{}").stdout)
 
 
+class ProjectLayoutTest(ProjectTest):
+    """Options for projects that keep their own layout: repositories per epic, paths, CLAUDE.md."""
+
+    def test_repository_fields_become_sections(self):
+        bp = self.tmp / "docs" / "BLUEPRINT.md"
+        bp.write_text(bp.read_text(encoding="utf-8").replace(
+            "**Risks specific to this epic** R-01.\n",
+            "**Risks specific to this epic** R-01.\n"
+            "**Target repositories**\n\n| Repository | Role |\n|---|---|\n| `core` | Provides the sale API |\n| `app` | Consumes it |\n\n"
+            "**Repositories** — Order: `core` first, then `app`.\n\n- `core`: base `master`, branch `feat/sales`, provides API-01.\n",
+        ), encoding="utf-8")
+        self.json_cli("compile", "E01")
+        spec = (self.feature() / "spec.md").read_text(encoding="utf-8")
+        plan = (self.feature() / "plan.md").read_text(encoding="utf-8")
+        self.assertIn("## Target Repositories\n\n| Repository | Role |", spec)
+        self.assertIn("| `app` | Consumes it |", spec)
+        context = spec.split("## Epic Context")[1].split("## Target Repositories")[0]
+        self.assertNotIn("Target repositories", context)
+        self.assertNotIn("feat/sales", spec)
+        self.assertIn("## Repositories\n\nOrder: `core` first, then `app`.", plan.replace("— ", ""))
+        self.assertIn("- `core`: base `master`, branch `feat/sales`, provides API-01.", plan)
+        self.assertLess(plan.index("## Constitution Check"), plan.index("## Repositories"))
+        self.assertLess(plan.index("## Repositories"), plan.index("## Project Structure"))
+
+    def test_without_fields_no_sections(self):
+        self.json_cli("compile", "E01")
+        self.assertNotIn("## Target Repositories", (self.feature() / "spec.md").read_text(encoding="utf-8"))
+
+    def test_paths_and_claude_md_switch(self):
+        cfg = self.tmp / ".specify" / "extensions" / "blueprint"
+        cfg.mkdir(parents=True)
+        (cfg / "blueprint-config.yml").write_text(
+            "blueprint_path: specs/blueprint/BLUEPRINT.md\ndecisions_path: specs/blueprint/DECISIONS.md\n"
+            "review_checklist_path: specs/blueprint/REVIEW-CHECKLIST.md\nclaude_md: false\n"
+        )
+        (self.tmp / "specs" / "blueprint").mkdir(parents=True)
+        shutil.move(str(self.tmp / "docs" / "BLUEPRINT.md"), self.tmp / "specs" / "blueprint" / "BLUEPRINT.md")
+        (self.tmp / "CLAUDE.md").write_text("@AGENTS.md\n")
+        out = self.json_cli("bootstrap")
+        self.assertEqual(out["claude_md"], "skipped (claude_md: false)")
+        self.assertEqual((self.tmp / "CLAUDE.md").read_text(), "@AGENTS.md\n")
+        self.assertTrue((self.tmp / "specs" / "blueprint" / "DECISIONS.md").is_file())
+        self.assertTrue((self.tmp / "specs" / "blueprint" / "REVIEW-CHECKLIST.md").is_file())
+        self.assertFalse((self.tmp / "docs" / "DECISIONS.md").exists())
+        c = (self.tmp / ".specify" / "memory" / "constitution.md").read_text(encoding="utf-8")
+        self.assertIn("`specs/blueprint/DECISIONS.md`", c)
+        self.assertNotIn("docs/DECISIONS.md", c)
+        st = self.json_cli("status")
+        self.assertEqual((st["decisions"], st["review_checklist"]), ("specs/blueprint/DECISIONS.md", "specs/blueprint/REVIEW-CHECKLIST.md"))
+        # the blueprint folder under specs/ is not mistaken for a feature
+        out = self.json_cli("compile", "E00")
+        self.assertTrue(out["feature_directory"].startswith("specs/001-"))
+        plan = (self.tmp / out["feature_directory"] / "plan.md").read_text(encoding="utf-8")
+        self.assertIn("`specs/blueprint/DECISIONS.md`", plan)
+
+
 class LookupTest(ProjectTest):
     def test_section_and_find(self):
         self.assertIn("`npm run check`", self.run_cli("section", "13.4").stdout)

@@ -8,6 +8,10 @@ description: "Load the active feature's spec and build rules before implementati
 blueprint project spec.md holds the acceptance criteria, edge cases and exact copy that decide whether the
 work is right, so this hook puts it in front of the implementation.
 
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
+(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
+use as `decisions` and `review_checklist`.
+
 ## User Input
 
 ```text

@@ -37,7 +37,10 @@ Consequences for writing:
 Compile relies on the template's conventions exactly:
 
 - `## Epic 03 — <Title>`; header fields (Goal, Personas served, Depends on, Preconditions for the session,
-  Scope, Flows and screens implemented, Data and API touched, Risks) before the first story.
+  Scope, Flows and screens implemented, Data and API touched, Risks) before the first story. Two optional
+  fields for projects that span repositories: `**Target repositories**` (table: repository, role) becomes
+  spec.md's "Target Repositories" section, and `**Repositories**` (order; per repository the base branch,
+  working branch and contracts) becomes plan.md's "Repositories" section.
 - `### E03-S02 — <Title>`; inside, the bold labels in order: Story, Context, Scope, Acceptance Criteria,
   Edge cases, Tests, Tasks, Story DoD.
 - After the last story: `**Epic-level tests**`, `**Definition of Done**`, `**Session handoff checklist**`.

@@ -50,6 +50,11 @@ COMPILED_FILES = ("spec.md", "plan.md", "research.md", "data-model.md", "quickst
 DEFAULTS = {
     "blueprint_path": "docs/BLUEPRINT.md",
     "specs_dir": "specs",
+    # Where bootstrap writes the decisions log and the review checklist.
+    "decisions_path": "docs/DECISIONS.md",
+    "review_checklist_path": "docs/REVIEW-CHECKLIST.md",
+    # false: bootstrap does not touch CLAUDE.md (for projects whose CLAUDE.md only imports other files).
+    "claude_md": True,
     # Sections copied into .specify/memory/constitution.md (read by tasks and implement).
     "constitution_sections": ["13.2", "13.5", "13.6", "13.7", "13.9", "13.10", "14.2", "14.3", "14.8", "12.10"],
     # Sections copied into every epic's plan.md "Technical Context".
@@ -480,6 +485,20 @@ def label_block(text: str, label: str) -> str:
     return "\n".join(out).strip()
 
 
+# Epic header fields that become sections of their own (multi-repository projects whose constitution asks
+# for them): `**Target repositories**` → spec.md, `**Repositories**` (order, branches, contracts) → plan.md.
+SPEC_FIELDS = (("Target repositories", "Target Repositories"),)
+PLAN_FIELDS = (("Repositories", "Repositories"),)
+
+
+def field_section(header_text: str, label: str, heading: str) -> list[str]:
+    block = label_block(header_text, label)
+    if not block:
+        return []
+    body = re.sub(r"^\*\*" + re.escape(label) + r"\*\*\s*:?\s*", "", block, count=1).strip()
+    return [f"## {heading}", "", body, ""]
+
+
 def slugify(title: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
     return "-".join(s.split("-")[:5]) or "epic"
@@ -577,6 +596,9 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
     footer_text = "\n".join(lines[epic["footer"][0] : epic["footer"][1]]).strip()
     today = _dt.date.today().isoformat()
     branch = feature.name
+    epic_context = header_text
+    for label, _ in SPEC_FIELDS + PLAN_FIELDS:
+        epic_context = strip_label_block(epic_context, label).strip()
 
     # ---- spec.md
     spec = [
@@ -593,8 +615,9 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
         "",
         "## Epic Context",
         "",
-        header_text,
+        epic_context,
         "",
+        *[line for label, heading in SPEC_FIELDS for line in field_section(header_text, label, heading)],
         "## User Scenarios & Testing *(mandatory)*",
         "",
         "Priorities follow the blueprint's story order, which is its dependency order: P1 is built first.",
@@ -669,9 +692,11 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
         "## Constitution Check",
         "",
         "The constitution (`.specify/memory/constitution.md`) holds the project's principles and the rules "
-        "bootstrap compiled from the same blueprint; this plan complies with both. No violations are planned; any deviation needs a DR in `docs/DECISIONS.md` and, if it changes "
+        "bootstrap compiled from the same blueprint; this plan complies with both. No violations are planned; "
+        f"any deviation needs a DR in `{cfg['decisions_path']}` and, if it changes "
         "behaviour, an amendment through `/speckit-blueprint-amend`.",
         "",
+        *[line for label, heading in PLAN_FIELDS for line in field_section(header_text, label, heading)],
         "## Project Structure",
         "",
         "### Documentation (this feature)",
@@ -937,7 +962,8 @@ def rules_span(text: str) -> tuple[int, int] | None:
 
 def project_status(root: Path, cfg: dict) -> dict:
     bp_path = root / cfg["blueprint_path"]
-    st: dict = {"root": str(root), "blueprint": cfg["blueprint_path"]}
+    st: dict = {"root": str(root), "blueprint": cfg["blueprint_path"], "decisions": cfg["decisions_path"],
+                "review_checklist": cfg["review_checklist_path"]}
     if not bp_path.is_file():
         st.update(state="no-blueprint", next={"command": "speckit-blueprint-discover", "why": "No blueprint yet: start product discovery."})
         return st
@@ -1064,10 +1090,10 @@ that is a decision record.
 
 ### {n}IV. Copy by ID, decisions by record
 User-facing text comes from the blueprint's copy tables by `CP-` ID, never improvised. Any decision the
-blueprint does not cover is recorded as `DR-nn` in `docs/DECISIONS.md` in the same commit.
+blueprint does not cover is recorded as `DR-nn` in `{decisions}` in the same commit.
 
 ### {n}V. Review before done
-An epic is done only after `/speckit-blueprint-review` walked `docs/REVIEW-CHECKLIST.md` over its diff and
+An epic is done only after `/speckit-blueprint-review` walked `{checklist}` over its diff and
 wrote `review.md` with `Status: DONE`."""
 
 
@@ -1098,7 +1124,7 @@ def own_constitution(old: str, rel_bp: str, bp: "Blueprint", content_sha: str, b
         "",
         "## Core Principles",
         "",
-        FIXED_PRINCIPLES.format(n="", bp=rel_bp, scope=scope),
+        FIXED_PRINCIPLES.format(n="", bp=rel_bp, scope=scope, decisions=cfg["decisions_path"], checklist=cfg["review_checklist_path"]),
         "",
         "## Engineering Rules (from the blueprint)",
         "",
@@ -1107,7 +1133,7 @@ def own_constitution(old: str, rel_bp: str, bp: "Blueprint", content_sha: str, b
         "",
         f"This constitution supersedes other practice in this repository. It is regenerated from {rel_bp}; "
         "amend the blueprint, never this file. Plans and tasks must comply; a justified exception is a DR in "
-        "`docs/DECISIONS.md`.",
+        f"`{cfg['decisions_path']}`.",
         "",
         f"**Version**: {version} | **Ratified**: {rat_m.group(1) if rat_m else today} | **Last Amended**: {today}",
         "",
@@ -1127,7 +1153,7 @@ def append_rules(old: str, rel_bp: str, bp_sha: str, content_sha: str, body: lis
         "Every other feature follows this project's own workflow. They add to the principles above and never "
         "override them: where the two conflict, the principles above win.",
         "",
-        FIXED_PRINCIPLES.format(n="B-", bp=rel_bp, scope=scope),
+        FIXED_PRINCIPLES.format(n="B-", bp=rel_bp, scope=scope, decisions=cfg["decisions_path"], checklist=cfg["review_checklist_path"]),
         "",
         "### Engineering rules from the blueprint",
         "",
@@ -1216,18 +1242,20 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
 
     # review checklist
     rc = bp.section_text("14.4") or bp.section_text("Review checklist")
-    p = root / "docs" / "REVIEW-CHECKLIST.md"
+    rc_rel = cfg["review_checklist_path"]
+    p = root / rc_rel
     if p.is_file() and GENERATED_MARK not in p.read_text(encoding="utf-8"):
-        report["review_checklist"] = "docs/REVIEW-CHECKLIST.md exists and is not generated; left unchanged"
+        report["review_checklist"] = f"{rc_rel} exists and is not generated; left unchanged"
     elif rc:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(gen_header(rel_bp, bp.sha, "REVIEW-CHECKLIST.md") + "\n" + demote(rc, 1) + "\n", encoding="utf-8")
-        report["review_checklist"] = "docs/REVIEW-CHECKLIST.md"
+        report["review_checklist"] = rc_rel
     else:
         report["review_checklist"] = "missing §14.4 in blueprint"
 
     # decisions log (created once; sessions append to it)
-    dpath = root / "docs" / "DECISIONS.md"
+    d_rel = cfg["decisions_path"]
+    dpath = root / d_rel
     if not dpath.is_file():
         rows = []
         for ident in sorted((k for k in bp.defs if id_type(k) == "DR"), key=lambda x: int(x[3:])):
@@ -1241,17 +1269,21 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
                 status = m.group(1).lower()
             rows.append(f"| {ident} | {title[:90]} | blueprint | {status} |")
         tpl = (Path(__file__).resolve().parent.parent / "templates" / "DECISIONS.md").read_text(encoding="utf-8")
+        dpath.parent.mkdir(parents=True, exist_ok=True)
         dpath.write_text(
             tpl.replace("{{PRODUCT}}", bp.title()).replace("{{BLUEPRINT}}", rel_bp).replace("{{ROWS}}", "\n".join(rows)),
             encoding="utf-8",
         )
-        report["decisions"] = f"created docs/DECISIONS.md with {len(rows)} blueprint DRs indexed"
+        report["decisions"] = f"created {d_rel} with {len(rows)} blueprint DRs indexed"
     else:
-        report["decisions"] = "docs/DECISIONS.md exists; left unchanged"
+        report["decisions"] = f"{d_rel} exists; left unchanged"
 
     # CLAUDE.md managed block
+    if not cfg.get("claude_md", True):
+        report["claude_md"] = "skipped (claude_md: false)"
+        return report
     block_tpl = (Path(__file__).resolve().parent.parent / "templates" / "claude-block.md").read_text(encoding="utf-8")
-    block = block_tpl.replace("{{PRODUCT}}", bp.title()).replace("{{BLUEPRINT}}", rel_bp).replace("{{SPECS}}", cfg["specs_dir"])
+    block = block_tpl.replace("{{PRODUCT}}", bp.title()).replace("{{BLUEPRINT}}", rel_bp).replace("{{SPECS}}", cfg["specs_dir"]).replace("{{DECISIONS}}", cfg["decisions_path"])
     block = f"{CLAUDE_START}\n{block.strip()}\n{CLAUDE_END}"
     cm = root / "CLAUDE.md"
     if cm.is_file():

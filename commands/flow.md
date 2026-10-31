@@ -1,5 +1,5 @@
 ---
-description: "Use when the user shares a new product or feature idea to turn into a blueprint and epics, or, in a project with docs/BLUEPRINT.md, for 'continue', 'next step', 'build the next epic', 'where are we' or a change to a blueprint epic's scope, acceptance criteria or copy. Reads the project state and runs the right blueprint or spec-kit step. Not for features that were not compiled from the blueprint: those follow the project's own workflow."
+description: "Use when the user shares a new product or feature idea to turn into a blueprint and epics, or, in a project with docs/BLUEPRINT.md, for 'continue', 'next step', 'build the next epic', 'where are we' or a change to a blueprint epic's scope, acceptance criteria or copy. Reads the project state and runs the right blueprint or spec-kit step. In a project with this extension, prefer it over the idea-to-blueprint skill. Not for features that were not compiled from the blueprint: those follow the project's own workflow."
 ---
 
 # Blueprint flow
@@ -12,6 +12,10 @@ outside the `speckit-blueprint:rules` block), `AGENTS.md` and `CLAUDE.md`. Where
 different rule (every change is recorded as a task first, tasks name their repository, extra approvals),
 follow them; this skill fills in only what they leave open. Features whose folder has no `.blueprint.json`
 are not this skill's business.
+
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
+(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
+use as `decisions` and `review_checklist`.
 
 ## User Input
 

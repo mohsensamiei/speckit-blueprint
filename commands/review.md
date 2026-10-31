@@ -8,6 +8,10 @@ The human reviewer sees a large diff produced quickly; their attention is the sc
 process. Everything you can catch here is worth far more than it costs. Review the diff as if someone else
 wrote it.
 
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
+(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
+use as `decisions` and `review_checklist`.
+
 ## User Input
 
 ```text

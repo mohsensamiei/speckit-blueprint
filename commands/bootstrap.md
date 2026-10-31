@@ -40,7 +40,8 @@ $ARGUMENTS
      checklist there (then it is left alone and the review hook uses it).
    - `docs/DECISIONS.md` — created once, with an index of the blueprint's DRs; sessions append to it.
    - `CLAUDE.md` — a managed block between `speckit-blueprint:start/end` markers; the rest of the file is
-     left alone.
+     left alone. Skipped with `claude_md: false` (for a CLAUDE.md that only imports other files).
+   - The decisions log and checklist paths come from `decisions_path` and `review_checklist_path`.
 3. If the JSON reports `missing_sections`, the blueprint lacks a section the config expects: fix the
    blueprint, or remove the number from `constitution_sections` in
    `.specify/extensions/blueprint/blueprint-config.yml` if it truly does not apply.

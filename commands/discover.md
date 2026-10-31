@@ -1,5 +1,5 @@
 ---
-description: "Turn an idea into an evidence-backed build blueprint (intake, research, decisions, epics)"
+description: "Turn an idea into an evidence-backed build blueprint (intake, research, decisions, epics) in a Spec Kit project. Inside a project that has this extension (.specify/extensions/blueprint), use this instead of the idea-to-blueprint skill: it runs the same method and hands the epics to Spec Kit."
 ---
 
 # Idea → Build Blueprint
@@ -57,6 +57,12 @@ skill's `references/blueprint-template.md` disagree, `speckit-flow.md` wins.
     outputs are in place, nothing else.
   - The project's rules shape the epics: if the constitution says tasks carry a repository prefix, or
     contracts change on the provider side first, stories and task seeds follow it.
+  - If the constitution asks each spec or plan for sections of its own across repositories (for example
+    a "Target Repositories" table, or per repository the base branch, working branch, contracts and
+    order), give every epic two header fields: `**Target repositories**` (a table: repository, role in
+    this epic) and `**Repositories**` (order, then per repository: base branch, working branch,
+    contracts provided or consumed). Compile turns them into spec.md's "Target Repositories" and
+    plan.md's "Repositories" sections.
   - Check every decision and AC against the project's principles before writing them (backward
     compatibility, data rules, gates). In particular, an AC that existing tests or callers must keep
     passing unchanged cannot sit next to a decision that changes what they observe.

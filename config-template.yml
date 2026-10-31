@@ -6,6 +6,13 @@ blueprint_path: docs/BLUEPRINT.md
 # Where spec-kit feature folders live.
 specs_dir: specs
 
+# Where bootstrap writes the decisions log and the review checklist.
+decisions_path: docs/DECISIONS.md
+review_checklist_path: docs/REVIEW-CHECKLIST.md
+
+# false: bootstrap leaves CLAUDE.md alone (for a CLAUDE.md that only imports other files).
+claude_md: true
+
 # Blueprint sections compiled into .specify/memory/constitution.md (or its managed block)
 # (read by /speckit-tasks and /speckit-implement in every epic, so keep it lean).
 constitution_sections:

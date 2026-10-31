@@ -7,6 +7,10 @@ description: "Change the blueprint deliberately (A-nn amendment) and recompile t
 The blueprint is the source of truth. When reality or the user disagrees with it, the blueprint changes
 first, explicitly, and the compiled specs follow. This is the only way spec files change.
 
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
+(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
+use as `decisions` and `review_checklist`.
+
 ## User Input
 
 ```text
