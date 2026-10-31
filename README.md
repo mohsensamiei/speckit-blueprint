@@ -15,7 +15,7 @@ The bridge is a deterministic compiler. `/speckit-blueprint-compile E03` resolve
 open questions, sources) to its definition in the blueprint and writes a spec-kit feature folder with
 exactly that. Build sessions never search the blueprint.
 
-Status: **0.2.0, Claude Code only.** Tested against Spec Kit 1.2.4.
+Status: **0.3.0, Claude Code only.** Tested against Spec Kit 1.2.4.
 
 ## Tested end to end
 
@@ -48,7 +48,7 @@ Requires Python 3.9+ and Spec Kit 1.2+.
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.4
 specify init my-product --integration claude
 cd my-product
-specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.2.0.zip
+specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.3.0.zip
 ```
 
 Installing from a URL asks for confirmation once (answer `y`). For development, install from a local
@@ -57,6 +57,28 @@ clone with `specify extension add --dev /path/to/speckit-blueprint`.
 Installing registers the commands as Claude Code skills (`/speckit-blueprint-…`), two Spec Kit hooks
 around `/speckit-implement`, and two Claude Code hooks in `.claude/settings.json` (session-start status and
 a guard against hand-editing compiled files).
+
+## Adding it to an existing Spec Kit project
+
+The extension can join a project that already has its own constitution, features and workflow. Its job
+there is to turn a new idea into epics; everything that exists stays the project's:
+
+- **Constitution.** Bootstrap does not rewrite a constitution the project wrote. It adds one managed block
+  (`speckit-blueprint:rules`, before `## Governance`) that applies only to features compiled from the
+  blueprint and yields to the project's principles. The project's version line is not touched; the guard
+  protects only that block. Set `constitution_mode` in the config to force `own` or `append`.
+- **Existing features.** The `before_implement` and `after_implement` hooks return at once for any feature
+  folder without `.blueprint.json`, so features written by hand keep their usual flow. Compiled epics
+  continue the project's feature numbering.
+- **Project rules.** The flow skill reads the constitution's own principles, `AGENTS.md` and `CLAUDE.md`
+  first and follows them where they are stricter (for example, every change recorded as a task first).
+- **Existing files.** `docs/REVIEW-CHECKLIST.md` is left alone if the project has its own; `CLAUDE.md`
+  only gains a managed block; `docs/DECISIONS.md` is created only if missing.
+- **Discovery.** With no blueprint and an existing product, discover runs in brownfield mode: the
+  repository is the first source, what exists is summarised rather than re-decided, and the blueprint
+  covers only the new idea.
+- **Session start.** Without a blueprint, the status hook says nothing in a project that already has
+  features or its own constitution.
 
 ## How you use it
 
@@ -123,13 +145,41 @@ python3 -m unittest discover -s tests -v
 ```
 
 The tests run the script against [tests/fixtures/mini-blueprint.md](tests/fixtures/mini-blueprint.md).
-`references/` and `scripts/lint_blueprint.py` are taken from idea-to-blueprint (commit `38cbec9`);
-`references/speckit-flow.md` records where this extension departs from them.
+
+## Keeping up with idea-to-blueprint
+
+[upstream/idea-to-blueprint/](upstream/idea-to-blueprint) is an exact copy of the skill (its `SKILL.md`,
+`references/`, `scripts/`, `assets/` and `LICENSE`) at the commit pinned in
+[upstream/UPSTREAM.json](upstream/UPSTREAM.json). Nothing in it is edited here. This extension's changes
+live in its own files, each of which reads the upstream copy and states where it differs:
+
+| File | Changes to upstream |
+|---|---|
+| [commands/discover.md](commands/discover.md) | Runs upstream `SKILL.md`; adds the incremental and brownfield modes; replaces phase 4 (lint, bootstrap) and phase 5 (spec-kit flow) |
+| [references/speckit-flow.md](references/speckit-flow.md) | Overrides `blueprint-template.md` where compile and the spec-kit flow need it |
+| [scripts/lint_blueprint.py](scripts/lint_blueprint.py) | Loads the upstream linter and drops the warnings it lists in `DROPPED` |
+
+To update:
+
+```bash
+python3 tools/sync_upstream.py            # or a tag/commit: tools/sync_upstream.py <ref>
+python3 -m unittest discover -s tests -v
+git diff -- upstream/
+```
+
+The sync replaces the copy, rewrites the manifest, prints the added, removed and changed files, and lists
+any anchor the overlay relies on that upstream removed (`SKILL.md` phase headings, the blueprint section
+numbers the constitution and plans read, the linter's finding hook). The tests fail if the copy was
+edited by hand or an anchor is gone. A weekly workflow
+([.github/workflows/upstream.yml](.github/workflows/upstream.yml)) opens one issue when upstream moves
+past the pinned commit.
 
 ## Limitations
 
 - Claude Code only for now. Other agents would need the hooks and the flow skill adapted.
-- Compile relies on the blueprint conventions in `references/blueprint-template.md` and
+- In an existing project, agents other than Claude Code (Codex, Cursor) do not get the blueprint flow;
+  they keep the project's own Spec Kit workflow.
+- Compile relies on the blueprint conventions in `upstream/idea-to-blueprint/references/blueprint-template.md` and
   `references/speckit-flow.md` (ID schemes, epic and story headings, bold labels). Blueprints written by
   hand in another shape will resolve fewer IDs; `blueprint.py refs` shows which.
 
