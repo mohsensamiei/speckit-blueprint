@@ -240,7 +240,11 @@ class HookTest(ProjectTest):
         self.assertIn("/speckit-blueprint-bootstrap", out)
 
 
-PROJECT_CONSTITUTION = """# Evida Constitution
+PROJECT_CONSTITUTION = """<!--
+Sync Impact Report
+- Version change: 2.2.0 → 2.3.0 (principle I reworded)
+-->
+# Evida Constitution
 
 ## Core Principles
 
@@ -268,12 +272,18 @@ class AdoptTest(ProjectTest):
     def test_bootstrap_appends_a_managed_block(self):
         out = self.json_cli("bootstrap")
         self.assertEqual(out["constitution"]["mode"], "append")
+        self.assertEqual((out["constitution"]["block"], out["constitution"]["version"]), ("added", "2.3.0 → 2.4.0"))
         c = self.cpath.read_text(encoding="utf-8")
         before, rest = c.split("<!-- speckit-blueprint:rules:start -->")
         block, after = rest.split("<!-- speckit-blueprint:rules:end -->")
-        self.assertEqual(before, PROJECT_CONSTITUTION.split("## Governance")[0])
+        # the project's text is kept; only the report gains a line
+        self.assertIn("Sync Impact Report\n- Version change: 2.3.0 → 2.4.0", before)
+        self.assertIn("Blueprint Rules block added by speckit-blueprint", before)
+        self.assertIn("- Version change: 2.2.0 → 2.3.0 (principle I reworded)", before)
+        self.assertIn(PROJECT_CONSTITUTION.split("-->\n")[1].split("## Governance")[0], before)
         self.assertTrue(after.lstrip().startswith("## Governance"))
-        self.assertIn("**Version**: 2.3.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-09-01", after)
+        self.assertRegex(after, r"\*\*Version\*\*: 2\.4\.0 \| \*\*Ratified\*\*: 2025-01-01 \| \*\*Last Amended\*\*: \d{4}-\d{2}-\d{2}")
+        self.assertNotIn("2026-09-01", after)
         self.assertIn("### B-I. The blueprint is the source of truth", block)
         self.assertIn("the principles above win", block)
         self.assertIn("No ORMs.", block)
@@ -283,19 +293,31 @@ class AdoptTest(ProjectTest):
         # compile continues the project's numbering
         self.assertEqual(self.json_cli("compile", "E00")["feature_directory"], "specs/002-e00-foundation")
 
-        # idempotent; a project edit outside the block survives a re-run
+        # idempotent (no second bump); a project edit outside the block survives a re-run
         self.cpath.write_text(c.replace("however small", "however small (agreed 2026)"), encoding="utf-8")
-        self.json_cli("bootstrap")
+        self.assertEqual(self.json_cli("bootstrap")["constitution"]["version"], "unchanged")
         c2 = self.cpath.read_text(encoding="utf-8")
         self.assertIn("however small (agreed 2026)", c2)
+        self.assertIn("**Version**: 2.4.0", c2)
         self.assertEqual(c2.count("speckit-blueprint:rules:start"), 1)
         # a blueprint change rewrites only the block
         bp = self.tmp / "docs" / "BLUEPRINT.md"
         bp.write_text(bp.read_text(encoding="utf-8").replace("No ORMs.", "No ORMs. No GraphQL."), encoding="utf-8")
-        self.json_cli("bootstrap")
+        self.assertEqual(self.json_cli("bootstrap")["constitution"]["block"], "updated")
         c3 = self.cpath.read_text(encoding="utf-8")
         self.assertIn("No GraphQL.", c3)
-        self.assertIn("**Version**: 2.3.0", c3)
+        self.assertIn("**Version**: 2.5.0", c3)
+        self.assertIn("2.4.0 → 2.5.0", c3)
+        self.assertIn("Blueprint Rules block updated", c3)
+
+    def test_version_bump_can_be_switched_off(self):
+        cfg = self.tmp / ".specify" / "extensions" / "blueprint"
+        cfg.mkdir(parents=True)
+        (cfg / "blueprint-config.yml").write_text("constitution_version_bump: none\n")
+        self.assertEqual(self.json_cli("bootstrap")["constitution"]["version"], "unchanged")
+        c = self.cpath.read_text(encoding="utf-8")
+        self.assertIn("**Version**: 2.3.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-09-01", c)
+        self.assertIn("speckit-blueprint:rules:start", c)
 
     def test_guard_protects_only_the_block(self):
         self.json_cli("bootstrap")

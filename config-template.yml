@@ -26,6 +26,10 @@ constitution_sections:
 # auto:   own when the constitution is missing or still the `specify init` template, otherwise append.
 constitution_mode: auto
 
+# append mode: when the managed block is added or its rules change, bump the project's constitution
+# version (minor | patch | none), set Last Amended and add a Sync Impact Report line.
+constitution_version_bump: minor
+
 # Blueprint sections copied into each epic's plan.md "Technical Context".
 plan_sections:
   - "12.2"

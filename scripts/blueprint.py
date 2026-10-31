@@ -60,6 +60,10 @@ DEFAULTS = {
     # own: bootstrap writes the whole constitution. append: it keeps the project's constitution and
     # maintains one managed block in it. auto: own for a missing or template constitution, else append.
     "constitution_mode": "auto",
+    # append mode: when the managed block is added or its rules change, bump the project's constitution
+    # version (minor | patch | none), set Last Amended and add a Sync Impact Report line, as Spec Kit's
+    # constitution governance expects.
+    "constitution_version_bump": "minor",
     "guard": True,
 }
 
@@ -1139,6 +1143,36 @@ def append_rules(old: str, rel_bp: str, bp_sha: str, content_sha: str, body: lis
     return old.rstrip() + "\n\n" + block + "\n"
 
 
+VERSION_RE = re.compile(r"(\*\*Version\*\*:\s*)(\d+)\.(\d+)\.(\d+)")
+LAST_AMENDED_RE = re.compile(r"(\*\*Last Amended\*\*:\s*)([0-9-]+)")
+
+
+def block_content_sha(text: str) -> str | None:
+    span = rules_span(text)
+    m = re.search(r"content-sha ([0-9a-f]+)", text[span[0]:span[1]]) if span else None
+    return m.group(1) if m else None
+
+
+def record_amendment(text: str, change: str, bump: str, rel_bp: str, today: str) -> tuple[str, str | None]:
+    """Follow the project's governance for a change to the managed block: bump the version, set Last
+    Amended, add a Sync Impact Report line. Returns the text and the version change ("1.1.0 → 1.2.0")."""
+    m = VERSION_RE.search(text)
+    if bump == "none" or not m:
+        return text, None
+    major, minor, patch = int(m.group(2)), int(m.group(3)), int(m.group(4))
+    new = f"{major}.{minor + 1}.0" if bump == "minor" else f"{major}.{minor}.{patch + 1}"
+    old = f"{major}.{minor}.{patch}"
+    text = text[: m.start()] + m.group(1) + new + text[m.end():]
+    text = LAST_AMENDED_RE.sub(lambda x: x.group(1) + today, text, count=1)
+    line = f"- Version change: {old} → {new} ({today}): Blueprint Rules block {change} by speckit-blueprint from {rel_bp}"
+    rep_m = re.search(r"<!--\s*\n?\s*Sync Impact Report[^\n]*\n", text)
+    if rep_m:
+        text = text[: rep_m.end()] + line + "\n" + text[rep_m.end():]
+    else:
+        text = f"<!--\nSync Impact Report\n{line}\n-->\n" + text
+    return text, f"{old} → {new}"
+
+
 def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
     rel_bp = os.path.relpath(bp.path, root)
     today = _dt.date.today().isoformat()
@@ -1161,10 +1195,16 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
         owned = not old.strip() or TEMPLATE_MARK in old or (GENERATED_MARK in old and RULES_START not in old)
         mode = "own" if owned else "append"
     if mode == "append":
+        before = block_content_sha(old)
+        change = "added" if before is None else ("updated" if before != content_sha else None)
         text = append_rules(old, rel_bp, bp.sha, content_sha, body, cfg)
+        version = None
+        if change:
+            text, version = record_amendment(text, change, str(cfg.get("constitution_version_bump") or "minor"), rel_bp, today)
         report["constitution"] = {
             "path": ".specify/memory/constitution.md", "mode": "append", "bytes": len(text.encode()),
-            "version": "unchanged (the project owns this constitution; bump it per its governance if needed)",
+            "block": change or "unchanged",
+            "version": version or "unchanged",
             "missing_sections": missing,
         }
     else:
