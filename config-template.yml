@@ -1,6 +1,6 @@
 # speckit-blueprint configuration. Every key is optional; defaults are shown.
 
-# Where the blueprint lives.
+# Where the blueprint lives (a project with one blueprint; for several, see `blueprints:` at the end).
 blueprint_path: docs/BLUEPRINT.md
 
 # Where spec-kit feature folders live.
@@ -52,3 +52,28 @@ second_level_types:
 # Block Edit/Write on compiled files (spec.md, plan.md, research.md, data-model.md,
 # quickstart.md, contracts/, constitution) in Claude Code.
 guard: true
+
+# Several blueprints in one project (one per product), instead of blueprint_path, decisions_path and
+# review_checklist_path above. Each id gets its own decisions log, review checklist, constitution block
+# and CLAUDE.md block; feature folders are named NNN-<id>-eNN-<slug> and their .blueprint.json records
+# the id. Commands take `--blueprint <id>` (or `<id>:E01`) and default to the active feature's blueprint.
+# Folders compiled before ids existed, and unmarked managed blocks, belong to the default blueprint
+# (default_blueprint, else the first listed).
+#
+# default_blueprint: one
+# blueprints:
+#   one:
+#     path: docs/BLUEPRINT.md
+#     decisions: docs/DECISIONS.md               # default: next to the blueprint (docs/DECISIONS.md)
+#     checklist: docs/REVIEW-CHECKLIST.md        # default: next to the blueprint
+#   desk:
+#     path: docs/desk/BLUEPRINT.md
+#     prefix: DESK              # how its IDs are written in shared files (DESK:DR-03); default: the id in
+#                               # capitals when there are several blueprints, "" to switch off
+#     number_base: 500          # its feature folders are numbered from 501, so parallel branches of
+#                               # different blueprints never take the same number
+#     sources:                  # where the existing product lives, for brownfield discover
+#       - ../evida-desk
+#       - ../desk-prototype
+#     constitution_sections: ["13.2", "13.5", "14.2"]   # optional: overrides the lists above for this id
+#     plan_sections: ["12.2", "13.4"]

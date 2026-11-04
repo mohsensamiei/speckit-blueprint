@@ -15,7 +15,7 @@ The bridge is a deterministic compiler. `/speckit-blueprint-compile E03` resolve
 open questions, sources) to its definition in the blueprint and writes a spec-kit feature folder with
 exactly that. Build sessions never search the blueprint.
 
-Status: **0.3.2, Claude Code only.** Tested against Spec Kit 1.2.4.
+Status: **0.4.0, Claude Code only.** Tested against Spec Kit 1.2.4.
 
 ## Tested end to end
 
@@ -61,7 +61,7 @@ Requires Python 3.9+ and Spec Kit 1.2+.
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.4
 specify init my-product --integration claude
 cd my-product
-specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.3.2.zip
+specify extension add blueprint --from https://github.com/mohsensamiei/speckit-blueprint/archive/refs/tags/v0.4.0.zip
 ```
 
 Installing from a URL asks for confirmation once (answer `y`). For development, install from a local
@@ -105,6 +105,46 @@ there is to turn a new idea into epics; everything that exists stays the project
   An epic's precondition is a clean tree, so commit the previous epic's work (with your approval) first.
 - **Session start.** Without a blueprint, the status hook says nothing in a project that already has
   features or its own constitution.
+
+## Several blueprints in one project
+
+A planning repository can hold one blueprint per product. List them under `blueprints:` in the config
+(see the end of [config-template.yml](config-template.yml)):
+
+```yaml
+default_blueprint: one
+blueprints:
+  one:
+    path: docs/BLUEPRINT.md
+  desk:
+    path: docs/desk/BLUEPRINT.md
+    number_base: 500
+    sources: [../evida-desk, ../desk-prototype]
+```
+
+- **Everything per blueprint.** Each id has its own decisions log and review checklist (by default next to
+  its blueprint file), its own `speckit-blueprint:rules:start id=<id>` block in the constitution and
+  `speckit-blueprint:start id=<id>` block in `CLAUDE.md`. Bootstrapping one never touches another's. The
+  guard protects every block.
+- **Features know their blueprint.** `.blueprint.json` records `blueprint_id`, and compile, status,
+  stale and accept look an epic up by blueprint and epic together, so `E01` of one product never reaches
+  another's folder. New folders are named `NNN-<id>-e01-<slug>`; `number_base` gives each blueprint its
+  own number range, so blueprints compiled on parallel branches do not take the same number.
+- **Choosing a blueprint.** Every command takes `--blueprint <id>`, or a qualified argument
+  (`compile desk:E01`, `find DESK:DR-03 one:SCR-02`, `section desk:13.4`). Without one it uses the active
+  feature's blueprint, else the default. `status` reports the current blueprint in full and every
+  blueprint in `blueprints`; the session-start block names them all.
+- **IDs.** With several blueprints each has a prefix (the id in capitals unless set), used where IDs from
+  two products could meet: decisions log rows, task seeds (`DESK:E01-S02-T3`), and the notes in the
+  constitution and `CLAUDE.md` blocks.
+- **Rules per feature.** `blueprint.py rules` prints the block that governs the active feature; the
+  before-implement hook loads it and ignores other blueprints' blocks.
+- **Discovery per blueprint.** Discover decides new, incremental or brownfield for the target blueprint
+  alone; brownfield reads the blueprint's `sources` (other repositories, a prototype) as well as this one.
+- **Upgrading a single-blueprint project.** Move `blueprint_path`, `decisions_path` and
+  `review_checklist_path` into an entry under `blueprints:` and make it the default. Its existing feature
+  folders (no `blueprint_id`) and its unmarked blocks stay its own; the next bootstrap adds the id to its
+  blocks. A config without `blueprints:` works as before (folder names and markers unchanged).
 
 ### Next to the idea-to-blueprint skill
 
@@ -154,8 +194,8 @@ The constitution (`.specify/memory/constitution.md`) is compiled from §12.10, �
 ## Configuration
 
 `.specify/extensions/blueprint/blueprint-config.yml` (see [config-template.yml](config-template.yml)):
-blueprint path, specs folder, which sections go into the constitution and into every plan, second-level
-resolution, and the guard switch.
+blueprint path (or several blueprints under `blueprints:`), specs folder, which sections go into the
+constitution and into every plan, second-level resolution, and the guard switch.
 
 ## Helper script
 
@@ -171,6 +211,8 @@ blueprint.py lint                      # structural linter, then refs
 blueprint.py refs                      # unresolved IDs per epic (exit 1 if any)
 blueprint.py stale                     # compiled epics whose blueprint text changed
 blueprint.py accept E01 --note "…"     # a built epic stays as built after a blueprint change
+blueprint.py rules                     # the constitution rules for the active feature's blueprint
+# with several blueprints: --blueprint <id> on any command, or desk:E03 / DESK:DR-03
 ```
 
 ## Development

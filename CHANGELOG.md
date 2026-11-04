@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.4.0 — 2026-11-04
+
+Several blueprints in one project (one per product), without one touching another's files.
+
+- `blueprints:` in the config maps each id to its `path`, `decisions`, `checklist`, `prefix`, `sources`,
+  `number_base` and, optionally, its own `constitution_sections` / `plan_sections`; `default_blueprint`
+  picks the default. A config without it has one implicit blueprint and works as before. Two blueprints
+  sharing a file, or path keys at the top level next to `blueprints:`, are config errors.
+- `.blueprint.json` records `blueprint_id`. Compile, status, stale, accept and the session-start hook find
+  an epic's folder by blueprint and epic together. Before, `compile E01` for a second blueprint reached the
+  first one's `E01` folder and could overwrite its compiled files. Folders compiled before ids belong to
+  the default blueprint.
+- New folders are `NNN-<id>-eNN-<slug>` when the config uses ids; `number_base` gives each blueprint its own
+  range of feature numbers.
+- Commands take `--blueprint <id>` or qualified arguments (`desk:E01`, `DESK:DR-03`, `one:13.4`) and default
+  to the active feature's blueprint (`SPECKIT_BLUEPRINT` also works). `status` lists every blueprint under
+  `blueprints`; the brief names them all.
+- Bootstrap keeps one constitution block and one CLAUDE.md block per blueprint, with the id in the markers;
+  an unmarked block is the default blueprint's and gets its id on its next bootstrap. A constitution
+  compiled whole from one blueprint keeps the other blueprints' blocks, and `constitution_mode: own` refuses
+  to replace another blueprint's constitution. Scope sentences name the blueprint id, not just the
+  presence of `.blueprint.json`.
+- Each blueprint has its own decisions log and checklist (default: next to its file); with a prefix, DR
+  index rows and task seeds carry it (`DESK:DR-01`, `DESK:E01-S02-T3`).
+- `blueprint.py rules` prints the rules for the active feature's blueprint; the context hook uses it. The
+  guard protects every block and names the right blueprint.
+- No command, prompt or guard message names `docs/BLUEPRINT.md` any more; it is only the default path.
+- Discover settles the target blueprint first (adding a config entry for a new product), decides its mode
+  for that blueprint alone, and in brownfield mode reads the blueprint's `sources` outside the repository.
+- The config parser reads nested maps.
+
 ## 0.3.2 — 2026-10-31
 
 - Bootstrap no longer creates a Sync Impact Report comment in a project-owned constitution. Spec Kit

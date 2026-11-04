@@ -8,9 +8,10 @@ The human reviewer sees a large diff produced quickly; their attention is the sc
 process. Everything you can catch here is worth far more than it costs. Review the diff as if someone else
 wrote it.
 
-`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
-(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
-use as `decisions` and `review_checklist`.
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them,
+and a project with several blueprints (`blueprints:` in the config) has one of each per blueprint.
+`blueprint.py status --json` reports the ones in use as `decisions` and `review_checklist`, for the
+active feature's blueprint (or the one named with `--blueprint <id>`).
 
 ## User Input
 
@@ -28,7 +29,8 @@ $ARGUMENTS
    Say nothing, change nothing, and return to the caller. Everything below is for blueprint
    features only.
 1. Active feature: `feature_directory` in `.specify/feature.json`. Epic ID: `epic` in
-   `<feature>/.blueprint.json`. Base of the epic's diff: the commit before its first task (ask git:
+   `<feature>/.blueprint.json`, and its blueprint `blueprint_id`; `blueprint.py status --json` then gives
+   that blueprint's `decisions` and `review_checklist`. Base of the epic's diff: the commit before its first task (ask git:
    `git log --oneline -- <feature>/tasks.md` and the epic branch, if one exists).
 
 2. **Gate.** Run the full `check` and the epic-level tests from `<feature>/quickstart.md`. Run the whole
@@ -39,7 +41,7 @@ $ARGUMENTS
    test that proves it, or the manual check (with date and observation). An AC with neither is not done.
    Check the story's **Edge cases** the same way.
 
-4. **Checklist.** Walk `docs/REVIEW-CHECKLIST.md` (the project's own, if it has one) over the diff, story by story, and answer every item.
+4. **Checklist.** Walk this blueprint's review checklist (`review_checklist`; the project's own, if it has one) over the diff, story by story, and answer every item.
    Fix what fails instead of noting it. Pay particular attention to the agent-code failure profile:
    invented APIs (every external symbol must trace to a pinned dependency), duplicated helpers the codebase
    already had, authorization and input-handling defects behind clean code, and tests that assert too
@@ -53,7 +55,7 @@ $ARGUMENTS
    satisfied by `tasks.md` plus this review file.
 
 7. **Decisions and amendments.** Every decision taken that the spec did not cover has a `DR-nn` in
-   `docs/DECISIONS.md` with its index row. Every AC that changed went through `/speckit-blueprint-amend`.
+   this blueprint's decisions log with its index row. Every AC that changed went through `/speckit-blueprint-amend`.
 
 8. **Write `<feature>/review.md`** (keep a `## VERIFY-AT-BUILD` section if the context hook created one):
 

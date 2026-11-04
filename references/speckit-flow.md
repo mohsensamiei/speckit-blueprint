@@ -61,7 +61,7 @@ instead of the per-session runbook:
   `review.md`). A fresh session per epic implementation; `/speckit-implement` resumes from the first
   unchecked task after a crash or a deliberate session break.
 - **State lives in files:** `tasks.md` checkboxes (progress), `review.md` (evidence and handoff),
-  `docs/DECISIONS.md` (decisions, with an index), the blueprint's Amendments log (changes to the plan).
+  the blueprint's decisions log (`docs/DECISIONS.md` by default; with an index), its Amendments log (changes to the plan).
   There is no PROGRESS.md; `blueprint.py status` derives progress from the feature folders.
 - **Gates** (an epic is done only when all are true): every AC has evidence, `check` and CI green, epic-level and regression tests green, review checklist
   applied with results, no gate weakened without a DR, no unexplained TODO or skipped test, no new flaky
@@ -77,12 +77,13 @@ instead of the per-session runbook:
   `speckit-blueprint-flow` skill and the session-start hook know the next step.
 - **Appendix B** keeps only what the product needs and bootstrap does not generate: `.env.example` and the
   `check` script (or its configuration). Bootstrap generates `.specify/memory/constitution.md`,
-  `docs/REVIEW-CHECKLIST.md` (from §14.4), `docs/DECISIONS.md` and the `CLAUDE.md` block.
+  the review checklist (from §14.4), the decisions log and the `CLAUDE.md` block (at the paths the
+  extension config gives this blueprint).
 
 ## 5. Epic 00 — Foundation
 
-Keep every item of `stories-ac-tests.md` §6 except item 5, which becomes: `docs/BLUEPRINT.md`,
-`docs/DECISIONS.md`, `docs/REVIEW-CHECKLIST.md`, the constitution and the `CLAUDE.md` block already exist
+Keep every item of `stories-ac-tests.md` §6 except item 5, which becomes: the blueprint, its decisions
+log and review checklist, the constitution (or its block) and the `CLAUDE.md` block already exist
 (bootstrap); E00 verifies them, adds `AGENTS.md` only if another agent will work on the repo and the
 project has none yet, and adds
 `.env.example` from Appendix B. Do not write stories or DoD lines that create or update PROGRESS.md; evidence

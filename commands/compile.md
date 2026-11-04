@@ -15,7 +15,10 @@ epic needs and never searches the blueprint.
 $ARGUMENTS
 ```
 
-The input names the epic (`E03`, `3`, `Epic 03`). If it is empty, take `next.epic` from
+The input names the epic (`E03`, `3`, `Epic 03`), and in a project with several blueprints, which one:
+`desk:E03`, or `E03 --blueprint desk`. Without a blueprint, compile uses the active feature's blueprint
+(else the config's default); when the user's words point at another product, name it rather than relying
+on the default. If the input is empty, take `next.epic` (and `blueprint_id`) from
 `python3 .specify/extensions/blueprint/scripts/blueprint.py status --json`.
 
 ## Steps
@@ -23,12 +26,15 @@ The input names the epic (`E03`, `3`, `Epic 03`). If it is empty, take `next.epi
 1. Run:
 
    ```bash
-   python3 .specify/extensions/blueprint/scripts/blueprint.py compile E03
+   python3 .specify/extensions/blueprint/scripts/blueprint.py compile E03        # or desk:E03
    ```
 
-   Output: `specs/NNN-e03-<slug>/` with `spec.md`, `plan.md`, `research.md`, `quickstart.md`, and when
+   Output: `specs/NNN-e03-<slug>/` (`specs/NNN-<id>-e03-<slug>/` when the config lists blueprints by id;
+   `number_base` sets where a blueprint's numbers start) with `spec.md`, `plan.md`, `research.md`, `quickstart.md`, and when
    the epic touches them `data-model.md` and `contracts/`; a `.blueprint.json` trace; and
    `.specify/feature.json` pointing at the folder, so spec-kit commands treat it as the active feature.
+   The trace records `blueprint_id`; an epic is found again by blueprint and epic together, so `E03` of
+   one blueprint never reaches another blueprint's folder.
 
 2. If the script refuses because the folder already has completed tasks, do not add `--force` on your own.
    Tell the user that the epic is partly built and that a product change belongs in

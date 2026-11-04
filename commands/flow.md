@@ -1,5 +1,5 @@
 ---
-description: "Use when the user shares a new product or feature idea to turn into a blueprint and epics, or, in a project with docs/BLUEPRINT.md, for 'continue', 'next step', 'build the next epic', 'where are we' or a change to a blueprint epic's scope, acceptance criteria or copy. Reads the project state and runs the right blueprint or spec-kit step. In a project with this extension, prefer it over the idea-to-blueprint skill. Not for features that were not compiled from the blueprint: those follow the project's own workflow."
+description: "Use when the user shares a new product or feature idea to turn into a blueprint and epics, or, in a project with a blueprint, for 'continue', 'next step', 'build the next epic', 'where are we' or a change to a blueprint epic's scope, acceptance criteria or copy. Reads the project state and runs the right blueprint or spec-kit step. In a project with this extension, prefer it over the idea-to-blueprint skill. Not for features that were not compiled from a blueprint: those follow the project's own workflow."
 ---
 
 # Blueprint flow
@@ -14,9 +14,10 @@ different rule (every change is recorded as a task first, tasks name their repos
 follow them; this skill fills in only what they leave open. Features whose folder has no `.blueprint.json`
 are not this skill's business.
 
-`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
-(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
-use as `decisions` and `review_checklist`.
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them,
+and a project with several blueprints (`blueprints:` in the config) has one of each per blueprint.
+`blueprint.py status --json` reports the ones in use as `decisions` and `review_checklist`, for the
+active feature's blueprint (or the one named with `--blueprint <id>`).
 
 ## User Input
 
@@ -34,7 +35,16 @@ python3 .specify/extensions/blueprint/scripts/blueprint.py status --json
 
 The JSON has `state`, `constitution`, `active_feature`, one row per epic (`state`: not-compiled, compiled,
 stale, tasked, in-progress, implemented, done) and `next` (`command`, `epic`, `why`, `new_session`,
-optional `activate`). Do not read `docs/BLUEPRINT.md` to work this out.
+optional `activate`). Do not read the blueprint to work this out.
+
+**Several blueprints.** A project can hold more than one blueprint (one per product, listed under
+`blueprints:` in `.specify/extensions/blueprint/blueprint-config.yml`). The top level of the JSON is the
+*current* blueprint (`blueprint_id`): the active feature's, else the config's default. `blueprints` lists
+every one with its `state`, `epics_done`/`epics_total` and `next`. When the user names another product,
+or their request belongs to another blueprint's epics, work on that one: pass `--blueprint <id>` to every
+`blueprint.py` command, or qualify the epic (`/speckit-blueprint-compile desk:E01`). Never put one
+product's scope into another product's blueprint. Each blueprint has its own decisions log, checklist,
+constitution block and CLAUDE.md block, and its IDs carry its `prefix` (`DESK:DR-03`) in shared files.
 
 `check` means the project's gate command (blueprint §13.4, repeated in each plan.md), not a
 `blueprint.py` subcommand.
@@ -44,7 +54,8 @@ optional `activate`). Do not read `docs/BLUEPRINT.md` to work this out.
 | The user… | Do |
 |---|---|
 | shares a new idea and there is no blueprint (`state: no-blueprint`) | run `/speckit-blueprint-discover` with the idea (it picks brownfield mode by itself when the repository already has a product) |
-| shares a new idea or big new scope and a blueprint exists | run `/speckit-blueprint-discover` in incremental mode (it adds epics to the existing blueprint) |
+| shares big new scope for a product that has a blueprint | run `/speckit-blueprint-discover --blueprint <id>` in incremental mode (it adds epics to that blueprint) |
+| shares an idea for a different product than the existing blueprints cover | ask whether it is a new blueprint; if so, run `/speckit-blueprint-discover` for a new blueprint id (it adds the config entry) |
 | wants to change behaviour, an AC, copy, data, scope of a planned epic, or reports that the spec is wrong | run `/speckit-blueprint-amend` with their words |
 | says continue / next / go / build, or asks what is next | follow `next` from the status (section 3) |
 | asks where things stand | print the status as a short table (epic, state, tasks) and the next step; stop |
@@ -56,7 +67,8 @@ When unsure whether a request changes the product, treat it as an amendment and 
 ## 3. Run the next step
 
 - `speckit-blueprint-bootstrap` → run it.
-- `speckit-blueprint-compile` (with `epic`) → run `/speckit-blueprint-compile <epic>`, then continue with
+- `speckit-blueprint-compile` (with `epic`) → run `/speckit-blueprint-compile <epic>` (as `<blueprint_id>:<epic>` when
+  `blueprints` lists more than one), then continue with
   `/speckit-tasks` and `/speckit-analyze` in the same session (they are cheap).
   If this runs as the `before_specify` hook and the user's request is not a blueprint epic, return at once
   and let `/speckit-specify` continue.
@@ -65,8 +77,9 @@ When unsure whether a request changes the product, treat it as an amendment and 
 - `speckit-implement` → if `next.activate` is set, first write it to `.specify/feature.json` as
   `{"feature_directory": "<value>"}`. Then run `/speckit-implement`.
 - `speckit-blueprint-review` → run it.
-- `speckit-blueprint-discover` with `state: all-done` → tell the user every epic is done and ask whether to
-  start incremental discovery.
+- `speckit-blueprint-discover` with `state: all-done` → tell the user every epic of that blueprint is done
+  and ask whether to start incremental discovery. Another blueprint in `blueprints` may still have work:
+  name it.
 
 **Keep going.** After a step finishes, re-read the status and run the next step yourself, without asking,
 until you reach one of these stops:

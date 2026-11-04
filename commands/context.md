@@ -8,9 +8,10 @@ description: "Load the active feature's spec and build rules before implementati
 blueprint project spec.md holds the acceptance criteria, edge cases and exact copy that decide whether the
 work is right, so this hook puts it in front of the implementation.
 
-`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
-(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
-use as `decisions` and `review_checklist`.
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them,
+and a project with several blueprints (`blueprints:` in the config) has one of each per blueprint.
+`blueprint.py status --json` reports the ones in use as `decisions` and `review_checklist`, for the
+active feature's blueprint (or the one named with `--blueprint <id>`).
 
 ## User Input
 
@@ -33,6 +34,15 @@ $ARGUMENTS
    python3 -c "import json;print(json.load(open('.specify/feature.json'))['feature_directory'])"
    ```
 
+   Its blueprint is `blueprint_id` in `<feature>/.blueprint.json`. Print the rules that govern it:
+
+   ```bash
+   python3 .specify/extensions/blueprint/scripts/blueprint.py rules
+   ```
+
+   In a project with several blueprints the constitution holds one Blueprint Rules block per blueprint;
+   only this one applies to this feature. Ignore the other blueprints' blocks (they say so themselves),
+   but keep the project's own principles outside the blocks.
 2. Read `<feature>/spec.md` in full, once. It is compiled to contain only this epic, so it is the one large
    file worth reading whole.
 3. Read `<feature>/plan.md` section "Preconditions and VERIFY-AT-BUILD". Check every precondition (previous
@@ -48,12 +58,14 @@ $ARGUMENTS
      starting the next. Never tick tasks in bulk at the end: the ticks are the resume point if the
      session stops, and `blueprint.py status` reads progress from them.
    - User-facing text only from `CP-` IDs in spec.md; no improvised strings.
-   - A decision the spec does not cover → `DR-nn` in `docs/DECISIONS.md` (with its index row) in the same
+   - A decision the spec does not cover → `DR-nn` in this blueprint's decisions log (`decisions` in
+     `status --json`, `docs/DECISIONS.md` by default; with its index row) in the same
      commit. An AC that is wrong or impossible → stop and use `/speckit-blueprint-amend`; never implement
      something different silently.
    - Read source files over 200 lines by range (`grep -n` first). Do not re-read files you have not changed.
      For anything outside the feature folder use `blueprint.py section <n>` or `blueprint.py find <ID>`,
-     not the whole blueprint.
+     not the whole blueprint (they read the active feature's blueprint). Where several blueprints share a
+     file (tasks, commits, the constitution), write this blueprint's IDs with its prefix (`DESK:DR-03`).
    - The project's own rules still hold: where the constitution's own principles or the project's agent
      instructions (`CLAUDE.md` and whatever it imports, `AGENTS.md`, where present) are stricter (task format, which repository a task runs in, approvals), follow them.
    - Blueprint lines that mention `PROGRESS.md` map to this flow: story and AC evidence go to the ticked

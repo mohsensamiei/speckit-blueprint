@@ -7,9 +7,10 @@ description: "Change the blueprint deliberately (A-nn amendment) and recompile t
 The blueprint is the source of truth. When reality or the user disagrees with it, the blueprint changes
 first, explicitly, and the compiled specs follow. This is the only way spec files change.
 
-`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them
-(`decisions_path`, `review_checklist_path` in the config). `blueprint.py status --json` reports the ones in
-use as `decisions` and `review_checklist`.
+`docs/DECISIONS.md` and `docs/REVIEW-CHECKLIST.md` below are the default paths; a project can move them,
+and a project with several blueprints (`blueprints:` in the config) has one of each per blueprint.
+`blueprint.py status --json` reports the ones in use as `decisions` and `review_checklist`, for the
+active feature's blueprint (or the one named with `--blueprint <id>`).
 
 ## User Input
 
@@ -28,8 +29,13 @@ $ARGUMENTS
    ```bash
    python3 .specify/extensions/blueprint/scripts/blueprint.py find E03-S02 SCR-04 ENT-Order
    python3 .specify/extensions/blueprint/scripts/blueprint.py section 12.4
-   grep -n "CP-SCR04-" docs/BLUEPRINT.md
+   grep -n "CP-SCR04-" <blueprint>
    ```
+
+   `<blueprint>` is the path `status --json` reports as `blueprint`. With several blueprints, amend the
+   one the change belongs to: pass `--blueprint <id>` to every command here (or qualify IDs, `desk:SCR-04`),
+   and record the amendment in that blueprint's own log. A change that spans two products is two
+   amendments, one per blueprint.
 
 3. **Ask first** when the change alters user-visible behaviour, money, data retention or security, unless
    the user's message already decided it. Smaller technical amendments can go ahead and be reported.
@@ -40,13 +46,13 @@ $ARGUMENTS
    If a decision changed, mark the old DR superseded and add the new one. Keep the evidence rules: new
    external facts carry `[VERIFIED — S-nn, date]` or `[ASSUMED — why]`.
 
-5. **Lint**: `python3 .specify/extensions/blueprint/scripts/blueprint.py lint` until it exits 0
+5. **Lint**: `python3 .specify/extensions/blueprint/scripts/blueprint.py lint [--blueprint <id>]` until it exits 0
    (see `/speckit-blueprint-lint` for how to fix findings).
 
 6. **Propagate.** Run:
 
    ```bash
-   python3 .specify/extensions/blueprint/scripts/blueprint.py stale
+   python3 .specify/extensions/blueprint/scripts/blueprint.py stale [--blueprint <id>]
    ```
 
    For each listed epic:
@@ -58,6 +64,6 @@ $ARGUMENTS
      the built epic as it is (the change is covered elsewhere, or does not affect the built code), record it
      so status stops reporting the change:
      `python3 .specify/extensions/blueprint/scripts/blueprint.py accept <Enn> --note "<why, e.g. covered by E04 (A-03)>"`.
-   - If constitution sections changed, also run `/speckit-blueprint-bootstrap`.
+   - If constitution sections changed, also run `/speckit-blueprint-bootstrap` for that blueprint.
 
 7. Report: the amendment ID, files and epics affected, what was recompiled, and what waits on the user.

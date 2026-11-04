@@ -24,5 +24,7 @@ $ARGUMENTS
    ```
 
 2. Show the user a compact table: epic, title, state, tasks done/total, review. Mark epics whose
-   blueprint text changed since compile (`changed_since_compile`).
+   blueprint text changed since compile (`changed_since_compile`). The top level is the current blueprint
+   (the active feature's, or `--blueprint <id>`); when `blueprints` lists more than one, add a line per
+   other blueprint (id, product, epics done/total, next step), or its own table if the user asks.
 3. End with the `next` step and its reason, in the user's language. Do not run it unless asked.

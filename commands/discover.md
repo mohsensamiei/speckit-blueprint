@@ -34,20 +34,51 @@ This command changes the skill only where the spec-kit build flow differs. Where
 disagree, this file wins; where `.specify/extensions/blueprint/references/speckit-flow.md` and the
 skill's `references/blueprint-template.md` disagree, `speckit-flow.md` wins.
 
+## Which blueprint
+
+A project can hold several blueprints, one per product, listed under `blueprints:` in
+`.specify/extensions/blueprint/blueprint-config.yml` (id → `path`, and optionally `decisions`,
+`checklist`, `prefix`, `sources`, `number_base`, section lists). Settle the target before anything else:
+
+1. Run `python3 .specify/extensions/blueprint/scripts/blueprint.py status --json`. `blueprints` lists every
+   configured blueprint with its `blueprint` path, `state` (`no-blueprint` when its file does not exist
+   yet) and `sources`.
+2. The target is the blueprint the input names (`--blueprint <id>`, or a product name matching one), else
+   the one the idea extends. If the idea is a different product from every configured blueprint, it is a
+   **new blueprint**: ask the user for its id (lowercase, e.g. `desk`), its path (its own folder, e.g.
+   `docs/desk/BLUEPRINT.md`, so no file collides with another blueprint's on merge) and the repositories
+   or folders that hold the existing product, if any. Then add the entry to the config. If the config has
+   no `blueprints:` map yet, move the current top-level `blueprint_path`, `decisions_path` and
+   `review_checklist_path` into an entry for the existing blueprint first (its `path`, `decisions`,
+   `checklist`; listed first, or named by `default_blueprint`, so its existing feature folders stay its own).
+3. Pass `--blueprint <id>` to every `blueprint.py` command below. Write only that blueprint's files: its
+   `path`, and through bootstrap its decisions log, checklist and its own managed blocks.
+
+Never add one product's epics to another product's blueprint.
+
 ## Modes
 
-- **New product** — no `docs/BLUEPRINT.md` (or the configured `blueprint_path`) yet: run phases 0–4.
-- **Incremental** — a blueprint exists and the input adds scope (a new capability, a new persona, a new
+The mode is decided for the target blueprint alone; other blueprints in the project do not change it.
+
+- **New product** — the target's file does not exist and no existing product backs it: run phases 0–4.
+- **Incremental** — the target's blueprint exists and the input adds scope (a new capability, a new persona, a new
   integration): run phases 0–4 scoped to the addition. Read only the sections you must stay consistent
   with (`blueprint.py section <n>`, `blueprint.py find <ID>`), continue every ID series from its highest
   existing number, add new epics after the last one, add rows to the Amendments log, and do not rewrite
   decided sections unless the addition forces it (then that is an amendment: `/speckit-blueprint-amend`).
-- **Existing product (brownfield)** — no blueprint yet, but the repository already has a product: code,
-  feature folders under `specs/`, a constitution of its own, or product docs. The blueprint covers only
-  the new idea, turned into epics that fit what exists. Differences from new-product mode:
-  - The repository is the first source. Read the constitution, `AGENTS.md`/`CLAUDE.md`, the README and
-    product docs, and the existing specs before intake; cite them as `[VERIFIED — repo:<path>]`. Ask
-    only what they do not answer.
+- **Existing product (brownfield)** — the target's file does not exist yet, but the product does: in
+  this repository (code, feature folders under `specs/`, a constitution of its own, product docs) or in
+  the target's `sources` (other repositories or folders, such as the product's code repository or a
+  prototype with its own blueprint and decisions). The blueprint covers only the new idea, turned into
+  epics that fit what exists. Differences from new-product mode:
+  - The product is the first source. Read this repository's constitution, `AGENTS.md`/`CLAUDE.md`, README,
+    product docs and existing specs, and every path in `sources` (its README, docs, decisions, code
+    layout, gate), before intake; cite them as `[VERIFIED — repo:<path>]` or
+    `[VERIFIED — repo:<source>/<path>]`. Documents in another language are sources too; the skill's
+    language convention still decides the blueprint's language. Ask only what they do not answer. If the product lives
+    elsewhere and `sources` is empty, ask where before calling it a new product.
+  - The planning repository is not the product. Its other blueprints and their features belong to other
+    products; do not describe them as this product's.
   - Do not re-decide what exists. Stack, architecture, gate, conventions and module map are summarised
     from the repository with paths, not researched afresh; research covers only what the idea adds (a
     new integration, a competitor benchmark for the new capability, a library it needs).
@@ -80,25 +111,25 @@ skill's `references/blueprint-template.md` disagree, `speckit-flow.md` wins.
     epics.
   - Do not read the skill's `references/session-protocol.md` or use its `assets/`; `speckit-flow.md`
     and bootstrap replace them.
-  - Save to `docs/BLUEPRINT.md` (or the configured `blueprint_path`), written in chunks as the skill
-    says.
+  - Save to the target blueprint's path (`blueprint` in `status --json --blueprint <id>`), written in
+    chunks as the skill says.
 - **Phase 4** (lint and deliver) is replaced by:
   1. Lint, and check that compile can resolve every ID each epic uses; fix every error and unresolved
      ID (warnings: fix or justify), until it exits 0:
 
      ```bash
-     python3 .specify/extensions/blueprint/scripts/blueprint.py lint
+     python3 .specify/extensions/blueprint/scripts/blueprint.py lint --blueprint <id>
      ```
 
   2. The human pass from the skill: read the Executive summary, one persona, one flow and one epic as a
      stranger, and fix anything you had to infer.
-  3. Run `/speckit-blueprint-bootstrap` (constitution or its managed block, review checklist, decisions
-     log, CLAUDE.md block). Do not create `PROGRESS.md`, `AGENTS.md` or other files from the skill's
+  3. Run `/speckit-blueprint-bootstrap --blueprint <id>` (constitution or its managed block, review
+     checklist, decisions log, CLAUDE.md block). Do not create `PROGRESS.md`, `AGENTS.md` or other files from the skill's
      `assets/`. In incremental mode, run bootstrap only if constitution sections changed.
   4. Wrap up in 5–10 lines: point at the Assumptions table and the Open Questions, name the two or three
      things you are least sure about, and say the next step: a fresh session, then "continue" (or
-     `/speckit-blueprint-compile E00`). Do not re-summarise the document. Do not commit unless the user
-     asks.
+     `/speckit-blueprint-compile <id>:E00` when the project has several blueprints, else `E00`). Do not
+     re-summarise the document. Do not commit unless the user asks.
 - **Phase 5** (build sessions) is the spec-kit flow: `speckit-blueprint-flow` runs it. The skill's
   session prompts appendix is not written.
 - The skill's language convention, market detection, design reference handling and guardrails apply

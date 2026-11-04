@@ -10,8 +10,9 @@ description: "Lint the blueprint for the structural guarantees compile and build
 $ARGUMENTS
 ```
 
-If the input names a file, lint that file; otherwise lint the configured blueprint (`docs/BLUEPRINT.md`
-unless `blueprint_path` in `.specify/extensions/blueprint/blueprint-config.yml` says otherwise).
+If the input names a file, lint that file. Otherwise lint the configured blueprint: the active feature's,
+or the one the input names (`--blueprint <id>`) when the config lists several under `blueprints:`.
+`blueprint.py status --json` reports its path as `blueprint`.
 
 ## Steps
 
@@ -19,7 +20,7 @@ unless `blueprint_path` in `.specify/extensions/blueprint/blueprint-config.yml` 
    compile can find):
 
    ```bash
-   python3 .specify/extensions/blueprint/scripts/blueprint.py lint
+   python3 .specify/extensions/blueprint/scripts/blueprint.py lint [--blueprint <id>]
    ```
 
    To lint another file directly: `python3 .specify/extensions/blueprint/scripts/lint_blueprint.py <file>`.

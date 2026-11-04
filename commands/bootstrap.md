@@ -20,8 +20,14 @@ $ARGUMENTS
 2. Run:
 
    ```bash
-   python3 .specify/extensions/blueprint/scripts/blueprint.py bootstrap
+   python3 .specify/extensions/blueprint/scripts/blueprint.py bootstrap [--blueprint <id>]
    ```
+
+   With several blueprints (`blueprints:` in the config), bootstrap writes one blueprint's share only:
+   its constitution block, checklist, decisions log and CLAUDE.md block, each marked with its id
+   (`speckit-blueprint:rules:start id=desk`, `speckit-blueprint:start id=desk`). Other blueprints' blocks
+   are left as they are. A block without an id (written before ids existed) belongs to the default
+   blueprint and gets its id the next time that blueprint is bootstrapped. Run it once per blueprint.
 
    It writes, deterministically:
    - `.specify/memory/constitution.md` — five fixed principles (blueprint is the source of truth, evidence
@@ -36,12 +42,15 @@ $ARGUMENTS
        (minor by default, `constitution_version_bump` in the config) and sets Last Amended to today. It does
        not create a Sync Impact Report comment (Spec Kit removes that before the commit); it adds a line only
        to one that is already open. A re-run with unchanged rules changes nothing.
-   - `docs/REVIEW-CHECKLIST.md` — blueprint §14.4 verbatim, unless the project already has its own
+   - The review checklist (`docs/REVIEW-CHECKLIST.md` by default) — blueprint §14.4 verbatim, unless the project already has its own
      checklist there (then it is left alone and the review hook uses it).
-   - `docs/DECISIONS.md` — created once, with an index of the blueprint's DRs; sessions append to it.
+   - The decisions log (`docs/DECISIONS.md` by default) — created once, with an index of the blueprint's
+     DRs (written `DESK:DR-03` when the blueprint has a prefix); sessions append to it.
    - `CLAUDE.md` — a managed block between `speckit-blueprint:start/end` markers; the rest of the file is
      left alone. Skipped with `claude_md: false` (for a CLAUDE.md that only imports other files).
-   - The decisions log and checklist paths come from `decisions_path` and `review_checklist_path`.
+   - The decisions log and checklist paths come from `decisions_path` and `review_checklist_path`, or per
+     blueprint from `decisions` and `checklist` (default: next to that blueprint's file). Two blueprints
+     never share one.
 3. If the JSON reports `missing_sections`, the blueprint lacks a section the config expects: fix the
    blueprint, or remove the number from `constitution_sections` in
    `.specify/extensions/blueprint/blueprint-config.yml` if it truly does not apply.

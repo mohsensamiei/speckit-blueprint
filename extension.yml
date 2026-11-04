@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: blueprint
   name: "Blueprint"
-  version: "0.3.2"
+  version: "0.4.0"
   description: "Evidence-backed product discovery into one blueprint, compiled into spec-kit features one epic at a time (Claude Code)"
   author: "Mohsen Samiei"
   repository: "https://github.com/mohsensamiei/speckit-blueprint"
@@ -53,7 +53,7 @@ provides:
   config:
     - name: "blueprint-config.yml"
       template: "config-template.yml"
-      description: "Blueprint path, compiled sections and guard switch"
+      description: "Blueprints (one or several), compiled sections and guard switch"
       required: false
 
 hooks:
@@ -68,7 +68,7 @@ hooks:
   before_specify:
     command: speckit.blueprint.flow
     optional: true
-    prompt: "Is this feature an epic of docs/BLUEPRINT.md? If so, compile it instead of writing a free-form spec"
+    prompt: "Is this feature an epic of one of this project's blueprints (blueprint.py status --json lists them)? If so, compile it instead of writing a free-form spec"
     description: "Offer to compile a blueprint epic instead of a free-form spec; other features continue as usual"
 
 events:

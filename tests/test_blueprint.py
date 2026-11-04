@@ -440,5 +440,203 @@ class ConfigTest(ProjectTest):
         self.assertNotIn("12.2 Module map", plan)
 
 
+MULTI_CONFIG = """# two products in one planning repository
+default_blueprint: one
+blueprints:
+  one:
+    path: docs/BLUEPRINT.md
+  desk:
+    path: docs/desk/BLUEPRINT.md
+    number_base: 500
+    constitution_sections: ["13.2"]
+    sources:
+      - ../evida-desk  # the product's code lives next door
+      - ../desk-prototype
+"""
+
+
+class MultiBlueprintTest(ProjectTest):
+    """Two blueprints (ONE, the existing one, and DESK) in one project: nothing of one touches the other."""
+
+    def setUp(self):
+        super().setUp()
+        (self.tmp / "docs" / "desk").mkdir()
+        desk = FIXTURE.read_text(encoding="utf-8").replace("# Tally", "# Desk", 1).replace("No ORMs.", "Desk rules: Dart only.")
+        (self.tmp / "docs" / "desk" / "BLUEPRINT.md").write_text(desk, encoding="utf-8")
+        self.cfg_dir = self.tmp / ".specify" / "extensions" / "blueprint"
+        self.cfg_dir.mkdir(parents=True)
+
+    def configure(self, text=MULTI_CONFIG):
+        (self.cfg_dir / "blueprint-config.yml").write_text(text, encoding="utf-8")
+
+    def legacy_one(self):
+        """ONE as it was before blueprint ids: bare markers, folders without blueprint_id."""
+        self.json_cli("bootstrap")
+        self.json_cli("compile", "E01")
+        trace = self.feature() / ".blueprint.json"
+        t = json.loads(trace.read_text(encoding="utf-8"))
+        del t["blueprint_id"]
+        trace.write_text(json.dumps(t), encoding="utf-8")
+        (self.feature() / "tasks.md").write_text("- [x] T001 a\n- [ ] T002 b\n")
+
+    def test_compile_never_reaches_the_other_blueprints_folder(self):
+        self.legacy_one()
+        spec_before = (self.feature() / "spec.md").read_text(encoding="utf-8")
+        self.configure()
+        out = self.json_cli("compile", "desk:E01")
+        self.assertEqual(out["feature_directory"], "specs/502-desk-e01-record-sales")
+        self.assertEqual(out["blueprint_id"], "desk")
+        self.assertEqual((self.feature() / "spec.md").read_text(encoding="utf-8"), spec_before)
+        desk = self.tmp / out["feature_directory"]
+        self.assertEqual(json.loads((desk / ".blueprint.json").read_text())["blueprint_id"], "desk")
+        self.assertIn("(blueprint `desk`)", (desk / "spec.md").read_text(encoding="utf-8"))
+        self.assertIn("DESK:E01-S02-T3", (desk / "plan.md").read_text(encoding="utf-8"))
+        # the legacy folder still belongs to ONE (the default): recompiling it hits the finished-task check
+        res = self.run_cli("compile", "E01", "--blueprint", "one", check=False)
+        self.assertIn("completed tasks", res.stderr)
+        # the active feature decides the default: desk's folder is active now
+        self.assertEqual(self.json_cli("compile", "E00")["feature_directory"], "specs/501-desk-e00-foundation")
+        self.assertEqual(self.json_cli("compile", "E00", "--blueprint", "ONE")["feature_directory"], "specs/001-one-e00-foundation")
+        res = self.run_cli("compile", "desk:E00", "--blueprint", "one", check=False)
+        self.assertNotEqual(res.returncode, 0)
+
+    def test_status_reads_each_blueprint_from_its_own_folders(self):
+        self.legacy_one()
+        self.configure()
+        st = self.json_cli("status")  # active feature is ONE's E01
+        self.assertEqual(st["blueprint_id"], "one")
+        e01 = next(e for e in st["epics"] if e["epic"] == "E01")
+        self.assertEqual((e01["state"], e01["feature_directory"]), ("in-progress", "specs/002-e01-record-sales"))
+        self.assertEqual([b["blueprint_id"] for b in st["blueprints"]], ["one", "desk"])
+        desk = st["blueprints"][1]
+        self.assertEqual((desk["epics_done"], desk["constitution"]), (0, "not-from-blueprint"))
+        self.assertEqual(desk["sources"], ["../evida-desk", "../desk-prototype"])
+        self.assertEqual(desk["decisions"], "docs/desk/DECISIONS.md")
+        st = self.json_cli("status", "--blueprint", "desk")
+        self.assertTrue(all(e["state"] == "not-compiled" for e in st["epics"]))
+        self.assertEqual(st["next"]["command"], "speckit-blueprint-bootstrap")
+        brief = self.run_cli("status", "--brief").stdout
+        self.assertIn("Tally (one)", brief)
+        self.assertIn("Also: Desk (desk)", brief)
+        self.assertIn("Tally (one)", self.run_cli("hook", "session-start", stdin="{}").stdout)
+
+    def test_bootstrap_keeps_one_block_per_blueprint(self):
+        cpath = self.tmp / ".specify" / "memory" / "constitution.md"
+        cpath.write_text(PROJECT_CONSTITUTION, encoding="utf-8")
+        (self.tmp / "CLAUDE.md").write_text("# Wiki rules\n")
+        self.legacy_one()
+        self.assertIn("<!-- speckit-blueprint:rules:start -->", cpath.read_text(encoding="utf-8"))
+        self.configure()
+        out = self.json_cli("bootstrap", "--blueprint", "desk")
+        self.assertEqual((out["constitution"]["mode"], out["constitution"]["block"]), ("append", "added"))
+        c = cpath.read_text(encoding="utf-8")
+        self.assertIn("No ORMs.", c)  # ONE's rules survive
+        self.assertIn("<!-- speckit-blueprint:rules:start id=desk -->", c)
+        self.assertIn("Desk rules: Dart only.", c)
+        self.assertIn('"blueprint_id": "desk"', c)
+        self.assertIn("### DESK-I. The blueprint is the source of truth", c)
+        self.assertLess(c.index("rules:end -->"), c.index("rules:start id=desk"))
+        # ONE re-bootstraps: its bare block gets its id, DESK's block stays
+        self.json_cli("bootstrap", "--blueprint", "one")
+        c = cpath.read_text(encoding="utf-8")
+        self.assertNotIn("<!-- speckit-blueprint:rules:start -->", c)
+        self.assertEqual(c.count("speckit-blueprint:rules:start id=one"), 1)
+        self.assertEqual(c.count("speckit-blueprint:rules:start id=desk"), 1)
+        self.assertEqual(self.json_cli("status", "--blueprint", "desk")["constitution"], "appended")
+        # rules prints only the active blueprint's block
+        rules = self.run_cli("rules", "--blueprint", "desk").stdout
+        self.assertIn("Dart only", rules)
+        self.assertNotIn("No ORMs", rules)
+        # CLAUDE.md: one block each, the project's text kept
+        claude = (self.tmp / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("# Wiki rules", claude)
+        self.assertEqual(claude.count("speckit-blueprint:start id=one"), 1)
+        self.assertEqual(claude.count("speckit-blueprint:start id=desk"), 1)
+        self.assertNotIn("<!-- speckit-blueprint:start -->", claude)
+        self.assertIn("--blueprint desk", claude)
+        # checklists and decisions are separate files; DESK's DR rows carry its prefix
+        self.assertTrue((self.tmp / "docs" / "desk" / "REVIEW-CHECKLIST.md").is_file())
+        self.assertIn("| DESK:DR-01 | Integer rials |", (self.tmp / "docs" / "desk" / "DECISIONS.md").read_text(encoding="utf-8"))
+        self.assertIn("| DR-01 | Integer rials |", (self.tmp / "docs" / "DECISIONS.md").read_text(encoding="utf-8"))
+        # the guard protects every block
+        def guard(old):
+            payload = {"tool_name": "Edit", "tool_input": {"file_path": str(cpath), "old_string": old}}
+            return self.run_cli("hook", "guard", stdin=json.dumps(payload), check=False)
+        self.assertEqual(guard("No ORMs.").returncode, 2)
+        res = guard("Dart only.")
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("docs/desk/BLUEPRINT.md", res.stderr)
+        self.assertEqual(guard("however small").returncode, 0)
+
+    def test_own_constitution_keeps_other_blocks(self):
+        self.configure()
+        self.assertEqual(self.json_cli("bootstrap", "--blueprint", "one")["constitution"]["mode"], "own")
+        self.assertEqual(self.json_cli("bootstrap", "--blueprint", "desk")["constitution"]["mode"], "append")
+        self.assertEqual(self.json_cli("bootstrap", "--blueprint", "one")["constitution"]["mode"], "own")
+        c = (self.tmp / ".specify" / "memory" / "constitution.md").read_text(encoding="utf-8")
+        self.assertIn("blueprint-id one", c.split("\n", 1)[0])
+        self.assertIn("Desk rules: Dart only.", c)
+        self.assertLess(c.index("rules:end id=desk"), c.index("## Governance"))
+        self.assertEqual(self.json_cli("status", "--blueprint", "one")["constitution"], "compiled")
+        self.assertEqual(self.json_cli("status", "--blueprint", "desk")["constitution"], "appended")
+        cfg = MULTI_CONFIG + "constitution_mode: own\n"
+        self.configure(cfg)
+        self.assertIn("compiled whole from blueprint 'one'", self.run_cli("bootstrap", "--blueprint", "desk", check=False).stderr)
+
+    def test_lookups_by_prefix(self):
+        self.configure()
+        out = self.run_cli("find", "DESK:DR-01", "one:ENT-Shop").stdout
+        self.assertIn("<!-- DESK:DR-01 -->", out)
+        self.assertIn("<!-- ONE:ENT-Shop -->", out)
+        self.assertIn("Dart only", self.run_cli("section", "desk:13.2").stdout)
+        self.assertIn("No ORMs", self.run_cli("section", "13.2").stdout)  # the default blueprint
+        self.assertNotEqual(self.run_cli("find", "nope:DR-01", check=False).returncode, 0)
+
+    def test_discover_mode_per_blueprint(self):
+        self.configure()
+        (self.tmp / "docs" / "desk" / "BLUEPRINT.md").unlink()
+        st = self.json_cli("status", "--blueprint", "desk")
+        self.assertEqual((st["state"], st["next"]["command"]), ("no-blueprint", "speckit-blueprint-discover"))
+        self.assertEqual(st["blueprints"][0]["state"], "building")  # ONE is unaffected
+        self.assertEqual(self.json_cli("status")["blueprint_id"], "one")
+
+    def test_config_errors(self):
+        self.configure("blueprints:\n  one:\n    path: docs/BLUEPRINT.md\n  desk:\n    path: docs/x.md\n    decisions: docs/DECISIONS.md\n")
+        res = self.run_cli("status", check=False)
+        self.assertIn("both use docs/DECISIONS.md", res.stderr)
+        self.assertEqual(self.run_cli("hook", "guard", stdin="{}", check=False).returncode, 0)
+        self.configure("blueprint_path: docs/BLUEPRINT.md\nblueprints:\n  desk:\n    path: docs/desk/BLUEPRINT.md\n")
+        self.assertIn("ambiguous", self.run_cli("status", check=False).stderr)
+        self.configure("blueprints:\n  Desk!:\n    path: x.md\n")
+        self.assertIn("lowercase", self.run_cli("status", check=False).stderr)
+
+    def test_single_blueprint_map_keeps_ids_out_of_ids(self):
+        # one entry under `blueprints:`: folder names carry the id, IDs need no prefix
+        self.configure("blueprints:\n  one:\n    path: docs/BLUEPRINT.md\n")
+        out = self.json_cli("compile", "E01")
+        self.assertEqual(out["feature_directory"], "specs/002-one-e01-record-sales")
+        self.assertIn("E01-S02-T3", (self.tmp / out["feature_directory"] / "plan.md").read_text(encoding="utf-8"))
+        self.assertNotIn("ONE:", (self.tmp / out["feature_directory"] / "plan.md").read_text(encoding="utf-8"))
+
+
+class YamlTest(unittest.TestCase):
+    def test_nested_maps_and_lists(self):
+        sys.path.insert(0, str(REPO / "scripts"))
+        import blueprint
+
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / "c.yml").write_text(MULTI_CONFIG + "plan_sections:\n- \"13.4\"\nguard: false\n", encoding="utf-8")
+            data = blueprint.load_simple_yaml(tmp / "c.yml")
+        finally:
+            shutil.rmtree(tmp)
+        self.assertEqual(data["default_blueprint"], "one")
+        self.assertEqual(data["blueprints"]["one"], {"path": "docs/BLUEPRINT.md"})
+        self.assertEqual(data["blueprints"]["desk"]["constitution_sections"], ["13.2"])
+        self.assertEqual(data["blueprints"]["desk"]["sources"], ["../evida-desk", "../desk-prototype"])
+        self.assertEqual(data["blueprints"]["desk"]["number_base"], "500")
+        self.assertEqual((data["plan_sections"], data["guard"]), (["13.4"], False))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""speckit-blueprint helper: turns one blueprint into spec-kit artifacts, one epic at a time.
+"""speckit-blueprint helper: turns blueprints into spec-kit artifacts, one epic at a time.
 
 Standard library only, so it runs under any Python 3.9+ (including the interpreter spec-kit's
 event dispatcher uses for Claude Code hooks).
@@ -7,9 +7,10 @@ event dispatcher uses for Claude Code hooks).
 Usage (from the project root; the extension installs this file under
 .specify/extensions/blueprint/scripts/):
 
-    blueprint.py status [--json | --brief]   where the project stands and the next step
+    blueprint.py status [--json | --brief]   where the project stands and the next step (every blueprint)
     blueprint.py compile E03 [--force]       write specs/NNN-e03-<slug>/ and make it the active feature
     blueprint.py bootstrap                   constitution, CLAUDE.md block, REVIEW-CHECKLIST, DECISIONS
+    blueprint.py rules                       the constitution rules that govern this blueprint's features
     blueprint.py section 14.4 [13.4 ...]     print blueprint sections by number (read less, not all)
     blueprint.py find ENT-Order [SCR-03 ...] print the blueprint definitions of IDs
     blueprint.py stale                       compiled epics whose blueprint text changed since compile
@@ -19,6 +20,10 @@ Usage (from the project root; the extension installs this file under
     blueprint.py epics                       epic and story IDs in blueprint order
     blueprint.py hook session-start          Claude Code SessionStart: one short status block
     blueprint.py hook guard                  Claude Code PreToolUse: block hand edits of compiled files
+
+A project with several blueprints lists them under `blueprints:` in the config. Every command then works
+on one of them: `--blueprint <id>` (or SPECKIT_BLUEPRINT), else the active feature's blueprint, else the
+default. Arguments can name it inline: `compile desk:E01`, `find DESK:DR-03 one:SCR-02`.
 
 Why a script and not the model: every build session used to search a 100-page blueprint for the
 few sections its epic needs, and that search was paid for again on every call of the session.
@@ -38,11 +43,16 @@ from pathlib import Path
 EXT_ID = "blueprint"
 TRACE_FILE = ".blueprint.json"
 GENERATED_MARK = "speckit-blueprint:generated"
+# Managed blocks: one per blueprint in CLAUDE.md (kind "") and in a constitution the project owns (kind
+# "rules:", constitution_mode: append). A project with a `blueprints:` map marks each block with its id
+# (`<!-- speckit-blueprint:rules:start id=desk -->`); a single-blueprint config keeps the bare markers.
 CLAUDE_START = "<!-- speckit-blueprint:start -->"
 CLAUDE_END = "<!-- speckit-blueprint:end -->"
-# Managed block inside a constitution the project owns (constitution_mode: append).
 RULES_START = "<!-- speckit-blueprint:rules:start -->"
 RULES_END = "<!-- speckit-blueprint:rules:end -->"
+# The id of the one blueprint of a config without a `blueprints:` map.
+IMPLICIT_ID = "default"
+BLUEPRINT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 # Placeholder that `specify init` leaves in its template constitution.
 TEMPLATE_MARK = "[PROJECT_NAME]"
 COMPILED_FILES = ("spec.md", "plan.md", "research.md", "data-model.md", "quickstart.md")
@@ -160,36 +170,236 @@ def _parse_scalar(v: str):
     return v
 
 
+KEY_RE = re.compile(r"^([^:#][^:]*):(?:\s+(.*)|)$")
+
+
 def load_simple_yaml(path: Path) -> dict:
-    """The subset this extension's config uses: top-level `key: value` and `key:` + `- item` lists."""
-    out: dict = {}
+    """The subset this extension's config uses: `key: value`, `key:` + `- item` lists, inline `[a, b]`
+    lists, and nested maps by indentation (`blueprints:` → id → settings)."""
     if not path.is_file():
-        return out
-    key = None
+        return {}
+    rows = []
     for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.split(" #", 1)[0].rstrip() if not raw.lstrip().startswith("#") else ""
-        if not line.strip():
+        if raw.lstrip().startswith("#"):
             continue
-        if not line[0].isspace() and ":" in line:
-            key, _, val = line.partition(":")
-            key = key.strip()
-            out[key] = _parse_scalar(val) if val.strip() else []
-        elif key and line.strip().startswith("- "):
-            if not isinstance(out.get(key), list):
-                out[key] = []
-            out[key].append(_parse_scalar(line.strip()[2:]))
+        line = raw.split(" #", 1)[0].rstrip()
+        if line.strip():
+            rows.append((len(line) - len(line.lstrip()), line.strip()))
+    out, _ = _yaml_map(rows, 0, rows[0][0]) if rows else ({}, 0)
     return out
 
 
+def _yaml_list(rows: list, i: int, indent: int) -> tuple[list, int]:
+    out = []
+    while i < len(rows) and rows[i][0] == indent and rows[i][1].startswith("- "):
+        out.append(_parse_scalar(rows[i][1][2:]))
+        i += 1
+    return out, i
+
+
+def _yaml_map(rows: list, i: int, indent: int) -> tuple[dict, int]:
+    out: dict = {}
+    while i < len(rows) and rows[i][0] >= indent:
+        ind, text = rows[i]
+        m = KEY_RE.match(text)
+        if ind > indent or not m:  # stray line: skip it rather than misread it
+            i += 1
+            continue
+        key, val = m.group(1).strip(), (m.group(2) or "").strip()
+        i += 1
+        if val:
+            out[key] = _parse_scalar(val)
+        elif i < len(rows) and rows[i][1].startswith("- ") and rows[i][0] >= indent:
+            out[key], i = _yaml_list(rows, i, rows[i][0])
+        elif i < len(rows) and rows[i][0] > indent:
+            out[key], i = _yaml_map(rows, i, rows[i][0])
+        else:
+            out[key] = []
+    return out, i
+
+
+class ConfigError(Exception):
+    pass
+
+
+# Paths that belong to one blueprint: top-level keys in a single-blueprint config, `path`, `decisions`,
+# `checklist` per id under `blueprints:`.
+PATH_KEYS = ("blueprint_path", "decisions_path", "review_checklist_path")
+# Settings a `blueprints:` entry may override; the top-level value (or the default) applies otherwise.
+PER_BLUEPRINT_KEYS = ("constitution_sections", "plan_sections", "second_level_types")
+
+
 def load_config(root: Path) -> dict:
+    """The extension config. `blueprints` maps each blueprint id to its own settings; a config without
+    that map has one blueprint, IMPLICIT_ID, built from the top-level keys (and `implicit` is true)."""
     cfg = dict(DEFAULTS)
+    blueprints: dict = {}
+    top: set = set()
     ext_dir = root / ".specify" / "extensions" / EXT_ID
     for name in (f"{EXT_ID}-config.yml", f"{EXT_ID}-config.local.yml"):
-        cfg.update({k: v for k, v in load_simple_yaml(ext_dir / name).items() if v != []})
-    env_path = os.environ.get("SPECKIT_BLUEPRINT_BLUEPRINT_PATH")
-    if env_path:
-        cfg["blueprint_path"] = env_path
+        for k, v in load_simple_yaml(ext_dir / name).items():
+            if v == []:
+                continue
+            if k == "blueprints":
+                if not isinstance(v, dict):
+                    raise ConfigError("`blueprints` must map each blueprint id to its settings (path, decisions, …)")
+                for bid, spec in v.items():
+                    spec = spec if isinstance(spec, dict) else {"path": spec}
+                    blueprints.setdefault(str(bid), {}).update({sk: sv for sk, sv in spec.items() if sv != []})
+            else:
+                cfg[k] = v
+                top.add(k)
+    if blueprints:
+        clash = sorted(top & set(PATH_KEYS))
+        if clash:
+            raise ConfigError(
+                f"{', '.join(clash)} at the top level of a config with `blueprints:` is ambiguous; "
+                "set `path`, `decisions` and `checklist` under each blueprint id instead"
+            )
+        for bid in blueprints:
+            if not BLUEPRINT_ID_RE.match(bid):
+                raise ConfigError(f"blueprint id '{bid}' must be lowercase letters, digits and hyphens")
+        if cfg.get("default_blueprint") and cfg["default_blueprint"] not in blueprints:
+            raise ConfigError(f"default_blueprint '{cfg['default_blueprint']}' is not under `blueprints:`")
+        cfg["implicit"] = False
+    else:
+        env_path = os.environ.get("SPECKIT_BLUEPRINT_BLUEPRINT_PATH")
+        if env_path:
+            cfg["blueprint_path"] = env_path
+        blueprints = {IMPLICIT_ID: {}}
+        cfg["implicit"] = True
+    cfg["blueprints"] = blueprints
+    seen: dict = {}
+    for bid in blueprints:
+        b = bp_config(cfg, bid)
+        if b["prefix"] and not re.match(r"^[A-Za-z][A-Za-z0-9]*$", b["prefix"]):
+            raise ConfigError(f"prefix '{b['prefix']}' of blueprint '{bid}' must be letters and digits")
+        for key in PATH_KEYS:
+            p = os.path.normpath(b[key])
+            if p in seen:
+                raise ConfigError(f"blueprints '{seen[p]}' and '{bid}' both use {p}; give each its own file")
+            seen[p] = bid
     return cfg
+
+
+def sibling_path(path: str, name: str) -> str:
+    """docs/desk/BLUEPRINT.md → docs/desk/DECISIONS.md; docs/DESK-BLUEPRINT.md → docs/DESK-DECISIONS.md."""
+    head, tail = os.path.split(path)
+    stem = os.path.splitext(tail)[0]
+    new = stem.replace("BLUEPRINT", name) if "BLUEPRINT" in stem else f"{stem}-{name}"
+    return f"{head}/{new}.md" if head else f"{new}.md"
+
+
+def default_id(cfg: dict) -> str:
+    cfg = cfg.get("_cfg", cfg)
+    return cfg.get("default_blueprint") or next(iter(cfg["blueprints"]))
+
+
+def bp_config(cfg: dict, bid: str | None = None) -> dict:
+    """The config with one blueprint's settings filled in: blueprint_path, decisions_path,
+    review_checklist_path, the section lists, prefix, sources, number_base. `_cfg` keeps the whole
+    config for lookups across blueprints."""
+    cfg = cfg.get("_cfg", cfg)
+    bid = bid or default_id(cfg)
+    spec = cfg["blueprints"][bid]
+    b = dict(cfg)
+    if cfg["implicit"]:
+        path, decisions, checklist, prefix = cfg["blueprint_path"], cfg["decisions_path"], cfg["review_checklist_path"], ""
+    else:
+        path = str(spec.get("path") or f"docs/{bid}/BLUEPRINT.md")
+        decisions = str(spec.get("decisions") or sibling_path(path, "DECISIONS"))
+        checklist = str(spec.get("checklist") or sibling_path(path, "REVIEW-CHECKLIST"))
+        prefix = spec.get("prefix")
+        if prefix is None:
+            prefix = bid.upper().replace("-", "") if len(cfg["blueprints"]) > 1 else ""
+    sources = spec.get("sources") or []
+    try:
+        number_base = int(spec.get("number_base") or 0)
+    except ValueError:
+        raise ConfigError(f"number_base of blueprint '{bid}' must be a number")
+    b.update(
+        {k: spec.get(k, cfg.get(k)) for k in PER_BLUEPRINT_KEYS},
+        _cfg=cfg,
+        id=bid,
+        blueprint_path=path,
+        decisions_path=decisions,
+        review_checklist_path=checklist,
+        prefix=str(prefix or ""),
+        sources=[str(s) for s in (sources if isinstance(sources, list) else [sources])],
+        number_base=number_base,
+        is_default=(bid == default_id(cfg)),
+        multi=len(cfg["blueprints"]) > 1,
+    )
+    return b
+
+
+def resolve_id(cfg: dict, key: str) -> str:
+    """A blueprint id from an id or a prefix, case-insensitive."""
+    cfg = cfg.get("_cfg", cfg)
+    for bid in cfg["blueprints"]:
+        prefix = bp_config(cfg, bid)["prefix"]
+        if key.lower() == bid or (prefix and key.upper() == prefix.upper()):
+            return bid
+    raise ConfigError(f"no blueprint '{key}' in the config (configured: {', '.join(cfg['blueprints'])})")
+
+
+def split_qualified(cfg: dict, token: str) -> tuple[str | None, str]:
+    """`desk:E01` or `DESK:DR-03` → ('desk', 'E01'); an unqualified token → (None, token)."""
+    left, sep, right = token.partition(":")
+    if sep and left and right:
+        return resolve_id(cfg, left), right
+    return None, token
+
+
+def read_trace(folder: Path) -> dict | None:
+    t = folder / TRACE_FILE
+    if not t.is_file():
+        return None
+    try:
+        return json.loads(t.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def trace_blueprint_id(cfg: dict, trace: dict) -> str | None:
+    """The blueprint a compiled feature belongs to: its `blueprint_id`, else the blueprint whose path it
+    was compiled from, else (a folder compiled before blueprint ids existed) the default blueprint."""
+    cfg = cfg.get("_cfg", cfg)
+    bid = trace.get("blueprint_id")
+    if bid in cfg["blueprints"]:
+        return bid
+    rel = trace.get("blueprint")
+    if rel:
+        for other in cfg["blueprints"]:
+            if os.path.normpath(bp_config(cfg, other)["blueprint_path"]) == os.path.normpath(rel):
+                return other
+    if bid and bid != IMPLICIT_ID:
+        return None  # a blueprint that is no longer configured
+    return default_id(cfg)
+
+
+def active_feature(root: Path) -> str | None:
+    fj = root / ".specify" / "feature.json"
+    if not fj.is_file():
+        return None
+    try:
+        return json.loads(fj.read_text(encoding="utf-8")).get("feature_directory")
+    except (OSError, ValueError):
+        return None
+
+
+def active_blueprint_id(root: Path, cfg: dict) -> str | None:
+    fd = active_feature(root)
+    trace = read_trace(root / fd) if fd else None
+    return trace_blueprint_id(cfg, trace) if trace else None
+
+
+def select_id(root: Path, cfg: dict, wanted: str | None = None) -> str:
+    """--blueprint, else SPECKIT_BLUEPRINT, else the active feature's blueprint, else the default."""
+    wanted = wanted or os.environ.get("SPECKIT_BLUEPRINT")
+    if wanted:
+        return resolve_id(cfg, wanted)
+    return active_blueprint_id(root, cfg) or default_id(cfg)
 
 
 # --------------------------------------------------------------------------------------------
@@ -514,30 +724,34 @@ def gen_header(rel_blueprint: str, bp_sha: str, what: str) -> str:
 # Compile
 
 
-def find_feature_dir(root: Path, cfg: dict, epic_id: str) -> Path | None:
-    specs = root / cfg["specs_dir"]
+def find_feature_dir(root: Path, bcfg: dict, epic_id: str) -> Path | None:
+    """The feature folder compiled from this epic of this blueprint (epic IDs repeat across blueprints)."""
+    specs = root / bcfg["specs_dir"]
     if not specs.is_dir():
         return None
     for d in sorted(specs.iterdir()):
-        t = d / TRACE_FILE
-        if t.is_file():
-            try:
-                if json.loads(t.read_text(encoding="utf-8")).get("epic") == epic_id:
-                    return d
-            except (OSError, ValueError):
-                continue
+        trace = read_trace(d)
+        if trace and trace.get("epic") == epic_id and trace_blueprint_id(bcfg, trace) == bcfg["id"]:
+            return d
     return None
 
 
-def next_feature_number(root: Path, cfg: dict) -> int:
-    specs = root / cfg["specs_dir"]
-    hi = 0
+def feature_number(root: Path, bcfg: dict, epic_num: int) -> int:
+    """number_base + epic + 1 (E00 → 001 …) when free, so folders sort like the blueprint; otherwise one
+    above the highest number in this blueprint's range, which ends at the next blueprint's number_base.
+    Separate ranges keep two blueprints compiled on parallel branches from taking the same number."""
+    specs = root / bcfg["specs_dir"]
+    nums = set()
     if specs.is_dir():
         for d in specs.iterdir():
             m = re.match(r"^(\d{3,})-", d.name)
             if m and not re.match(r"^\d{8}-\d{6}-", d.name):
-                hi = max(hi, int(m.group(1)))
-    return hi + 1
+                nums.add(int(m.group(1)))
+    base = bcfg["number_base"]
+    if base + epic_num + 1 not in nums:
+        return base + epic_num + 1
+    upper = min((b for b in (bp_config(bcfg, i)["number_base"] for i in bcfg["_cfg"]["blueprints"]) if b > base), default=None)
+    return max((n for n in nums if n >= base and (upper is None or n < upper)), default=base) + 1
 
 
 def group(pairs: list[tuple[str, Unit]], types: set[str]) -> list[tuple[str, Unit]]:
@@ -562,6 +776,19 @@ def epic_refs(bp: Blueprint, epic: dict, cfg: dict) -> tuple[list[str], list[tup
     return ids, pairs, unresolved
 
 
+def qualify(cfg: dict, ident: str) -> str:
+    return f"{cfg['prefix']}:{ident}" if cfg["prefix"] else ident
+
+
+def id_note(cfg: dict) -> str:
+    """For a blueprint with a prefix: how its IDs are written outside its own files."""
+    p = cfg["prefix"]
+    return (
+        f"IDs here (`E01`, `DR-03`, `FF-02`, `CE-1`, …) are blueprint `{cfg['id']}`'s; in files shared with "
+        f"other blueprints (constitution, tasks, commits) write them as `{p}:DR-03`."
+    ) if p else ""
+
+
 def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: bool = False) -> dict:
     epic = bp.epic(epic_key)
     if not epic:
@@ -569,15 +796,13 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
     rel_bp = os.path.relpath(bp.path, root)
     eid, etitle = epic["id"], epic["title"]
     lines = bp.lines
+    bid, prefix = cfg["id"], cfg["prefix"]
 
     feature = find_feature_dir(root, cfg, eid)
     if feature is None:
-        # E00 → 001, E01 → 002 … when that prefix is free, so folders sort like the blueprint.
-        num = epic["num"] + 1
-        specs = root / cfg["specs_dir"]
-        if specs.is_dir() and any(d.name.startswith(f"{num:03d}-") for d in specs.iterdir()):
-            num = next_feature_number(root, cfg)
-        feature = root / cfg["specs_dir"] / f"{num:03d}-{eid.lower()}-{slugify(etitle)}"
+        num = feature_number(root, cfg, epic["num"])
+        tag = "" if cfg["implicit"] else f"{bid}-"
+        feature = root / cfg["specs_dir"] / f"{num:03d}-{tag}{eid.lower()}-{slugify(etitle)}"
     trace_path = feature / TRACE_FILE
     if trace_path.is_file() and (feature / "tasks.md").is_file() and not force:
         tasks = (feature / "tasks.md").read_text(encoding="utf-8")
@@ -610,8 +835,11 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
         "",
         f"**Status**: Compiled from blueprint ({eid})",
         "",
-        f"**Input**: {rel_bp} — Epic {eid[1:]}. Acceptance criteria, copy IDs and edge cases below are binding verbatim.",
+        f"**Input**: {rel_bp} — Epic {eid[1:]}"
+        + ("" if cfg["implicit"] else f" (blueprint `{bid}`)")
+        + ". Acceptance criteria, copy IDs and edge cases below are binding verbatim.",
         "",
+        *([id_note(cfg), ""] if prefix else []),
         "## Epic Context",
         "",
         epic_context,
@@ -691,7 +919,9 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
         "## Constitution Check",
         "",
         "The constitution (`.specify/memory/constitution.md`) holds the project's principles and the rules "
-        "bootstrap compiled from the same blueprint; this plan complies with both. No violations are planned; "
+        "bootstrap compiled from the same blueprint"
+        + ("" if cfg["implicit"] else f" (the Blueprint Rules block marked `id={bid}`; blocks of other blueprints do not apply here)")
+        + "; this plan complies with both. No violations are planned; "
         f"any deviation needs a DR in `{cfg['decisions_path']}` and, if it changes "
         "behaviour, an amendment through `/speckit-blueprint-amend`.",
         "",
@@ -719,7 +949,8 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
         "## Blueprint Task Seeds",
         "",
         "Instructions for `/speckit-tasks`: build one phase per user story in the order below. Keep each "
-        "blueprint task ID in its task description (for example `- [ ] T007 [US2] E01-S02-T3 …`), keep their "
+        "blueprint task ID in its task description (for example "
+        f"`- [ ] T007 [US2] {prefix + ':' if prefix else ''}E01-S02-T3 …`), keep their "
         "order, and put the story's tests (its **Tests** block in spec.md) before its implementation tasks. "
         "Add setup or foundational tasks only when the epic's preconditions need them.",
         "",
@@ -846,6 +1077,7 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
     for ident, u in pairs:
         unit_hashes.setdefault(ident, sha(u.text(lines)))
     trace = {
+        "blueprint_id": bid,
         "epic": eid,
         "title": etitle,
         "blueprint": rel_bp,
@@ -864,6 +1096,7 @@ def compile_epic(root: Path, cfg: dict, bp: Blueprint, epic_key: str, force: boo
         json.dumps({"feature_directory": rel_feature}) + "\n", encoding="utf-8"
     )
     return {
+        "blueprint_id": bid,
         "epic": eid,
         "title": etitle,
         "feature_directory": rel_feature,
@@ -942,41 +1175,85 @@ def stale_units(bp: Blueprint, trace: dict) -> list[str]:
     return changed
 
 
-def constitution_state(root: Path) -> str:
+def marker(kind: str, which: str, block_id: str | None) -> str:
+    """kind "" (CLAUDE.md) or "rules:" (constitution); which "start" or "end"; block_id None for the bare
+    markers of a single-blueprint config."""
+    return f"<!-- speckit-blueprint:{kind}{which}{'' if block_id is None else ' id=' + block_id} -->"
+
+
+def managed_blocks(text: str, kind: str) -> list[tuple[str | None, int, int]]:
+    """(id or None, start, end) of every managed block of this kind, markers included."""
+    out = []
+    pos = 0
+    for m in re.finditer(r"<!-- speckit-blueprint:" + re.escape(kind) + r"start(?: id=([a-z0-9][a-z0-9-]*))? -->", text):
+        if m.start() < pos:
+            continue
+        end = marker(kind, "end", m.group(1))
+        j = text.find(end, m.end())
+        if j >= 0:
+            pos = j + len(end)
+            out.append((m.group(1), m.start(), pos))
+    return out
+
+
+def block_id(bcfg: dict) -> str | None:
+    return None if bcfg["implicit"] else bcfg["id"]
+
+
+def owns_block(bcfg: dict, found_id: str | None) -> bool:
+    """A block belongs to this blueprint when it carries its id. A bare block (written before blueprint
+    ids existed) belongs to the default blueprint, and is re-marked with its id on the next bootstrap."""
+    return found_id == block_id(bcfg) or (found_id is None and bcfg["is_default"])
+
+
+def find_block(text: str, kind: str, bcfg: dict) -> tuple[int, int] | None:
+    blocks = managed_blocks(text, kind)
+    exact = [(s, e) for i, s, e in blocks if i == block_id(bcfg)]
+    legacy = [(s, e) for i, s, e in blocks if owns_block(bcfg, i)]
+    return (exact or legacy or [None])[0]
+
+
+def own_owner(text: str) -> str | None | bool:
+    """For a constitution compiled whole (own mode): the blueprint id in its header, None for a header
+    without one; False when the file is not compiled whole."""
+    if GENERATED_MARK not in text:
+        return False
+    m = re.search(r"blueprint-id ([a-z0-9][a-z0-9-]*)", text.split("\n", 1)[0])
+    return m.group(1) if m else None
+
+
+def owns_constitution(bcfg: dict, text: str) -> bool:
+    owner = own_owner(text)
+    if owner is False:
+        return False
+    return bcfg["implicit"] or owner == bcfg["id"] or (owner is None and bcfg["is_default"])
+
+
+def constitution_state(root: Path, bcfg: dict) -> str:
     c = root / ".specify" / "memory" / "constitution.md"
     if not c.is_file():
         return "missing"
     text = c.read_text(encoding="utf-8")
-    if RULES_START in text:
+    if find_block(text, "rules:", bcfg):
         return "appended"
-    return "compiled" if GENERATED_MARK in text else "not-from-blueprint"
-
-
-def rules_span(text: str) -> tuple[int, int] | None:
-    """Character span of the managed rules block in a project-owned constitution, markers included."""
-    i = text.find(RULES_START)
-    j = text.find(RULES_END, i + 1) if i >= 0 else -1
-    return (i, j + len(RULES_END)) if i >= 0 and j >= 0 else None
+    return "compiled" if owns_constitution(bcfg, text) else "not-from-blueprint"
 
 
 def project_status(root: Path, cfg: dict) -> dict:
+    """Status of one blueprint (`cfg` from bp_config)."""
     bp_path = root / cfg["blueprint_path"]
-    st: dict = {"root": str(root), "blueprint": cfg["blueprint_path"], "decisions": cfg["decisions_path"],
-                "review_checklist": cfg["review_checklist_path"]}
+    st: dict = {"root": str(root), "blueprint_id": cfg["id"], "prefix": cfg["prefix"], "blueprint": cfg["blueprint_path"],
+                "decisions": cfg["decisions_path"], "review_checklist": cfg["review_checklist_path"]}
+    if cfg["sources"]:
+        st["sources"] = cfg["sources"]
+    active = active_feature(root)
+    st["active_feature"] = active
     if not bp_path.is_file():
         st.update(state="no-blueprint", next={"command": "speckit-blueprint-discover", "why": "No blueprint yet: start product discovery."})
         return st
     bp = Blueprint(bp_path)
     st["product"] = bp.title()
-    st["constitution"] = constitution_state(root)
-    active = None
-    fj = root / ".specify" / "feature.json"
-    if fj.is_file():
-        try:
-            active = json.loads(fj.read_text(encoding="utf-8")).get("feature_directory")
-        except ValueError:
-            active = None
-    st["active_feature"] = active
+    st["constitution"] = constitution_state(root, cfg)
     epics = []
     for e in bp.epics:
         d = find_feature_dir(root, cfg, e["id"])
@@ -987,11 +1264,7 @@ def project_status(root: Path, cfg: dict) -> dict:
             row["feature_directory"] = d.relative_to(root).as_posix()
             total, done = task_counts(d / "tasks.md")
             rv = review_status(d / "review.md")
-            try:
-                trace = json.loads((d / TRACE_FILE).read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                trace = {}
-            changed = stale_units(bp, trace)
+            changed = stale_units(bp, read_trace(d) or {})
             row.update(tasks_total=total, tasks_done=done, review=rv)
             if rv == "DONE":
                 row["state"] = "done"
@@ -1046,25 +1319,62 @@ def project_status(root: Path, cfg: dict) -> dict:
     return st
 
 
+def summary(st: dict) -> dict:
+    epics = st.get("epics", [])
+    out = {k: st[k] for k in ("blueprint_id", "prefix", "product", "blueprint", "decisions", "review_checklist", "sources", "state", "constitution") if k in st}
+    out.update(epics_done=sum(1 for e in epics if e["state"] == "done"), epics_total=len(epics), next=st.get("next"))
+    return out
+
+
+def full_status(root: Path, cfg: dict, bid: str) -> dict:
+    """The status of blueprint `bid` (the active feature's, unless chosen), plus a summary of every
+    configured blueprint under `blueprints`."""
+    st = project_status(root, bp_config(cfg, bid))
+    rows = []
+    for other in cfg["blueprints"]:
+        rows.append(summary(st if other == bid else project_status(root, bp_config(cfg, other))))
+    st["blueprints"] = rows
+    return st
+
+
+def epic_ref(st: dict, epic: str, multi: bool) -> str:
+    return f"{st['blueprint_id']}:{epic}" if multi else epic
+
+
 def brief(st: dict) -> str:
+    rows = st.get("blueprints") or []
+    multi = len(rows) > 1
+    label = f" ({st['blueprint_id']})" if multi else ""
     if st.get("state") == "no-blueprint":
-        return f"[speckit-blueprint] No blueprint at {st['blueprint']}. Next: /speckit-blueprint-discover with the idea."
-    done = sum(1 for e in st.get("epics", []) if e["state"] == "done")
-    total = len(st.get("epics", []))
-    lines = [f"[speckit-blueprint] {st.get('product')}: {done}/{total} epics done. Blueprint: {st['blueprint']}."]
-    cur = next((e for e in st.get("epics", []) if e["state"] != "done"), None)
-    if cur:
-        extra = ""
-        if cur.get("tasks_total"):
-            extra = f", tasks {cur['tasks_done']}/{cur['tasks_total']}"
-        lines.append(f"Current: {cur['epic']} {cur['title']} — {cur['state']}{extra}.")
-    n = st.get("next") or {}
-    if n:
-        tgt = f" {n['epic']}" if n.get("epic") and n["command"] == "speckit-blueprint-compile" else ""
-        lines.append(f"Next: /{n['command']}{tgt} — {n['why']}")
-    stale = [e["epic"] for e in st.get("epics", []) if e.get("changed_since_compile")]
-    if stale:
-        lines.append(f"Blueprint changed since compile for: {', '.join(stale)}.")
+        lines = [f"[speckit-blueprint] No blueprint{label} at {st['blueprint']}. Next: /speckit-blueprint-discover with the idea."]
+    else:
+        done = sum(1 for e in st.get("epics", []) if e["state"] == "done")
+        total = len(st.get("epics", []))
+        lines = [f"[speckit-blueprint] {st.get('product')}{label}: {done}/{total} epics done. Blueprint: {st['blueprint']}."]
+        cur = next((e for e in st.get("epics", []) if e["state"] != "done"), None)
+        if cur:
+            extra = ""
+            if cur.get("tasks_total"):
+                extra = f", tasks {cur['tasks_done']}/{cur['tasks_total']}"
+            lines.append(f"Current: {epic_ref(st, cur['epic'], multi)} {cur['title']} — {cur['state']}{extra}.")
+        n = st.get("next") or {}
+        if n:
+            tgt = f" {epic_ref(st, n['epic'], multi)}" if n.get("epic") and n["command"] == "speckit-blueprint-compile" else ""
+            lines.append(f"Next: /{n['command']}{tgt} — {n['why']}")
+        stale = [e["epic"] for e in st.get("epics", []) if e.get("changed_since_compile")]
+        if stale:
+            lines.append(f"Blueprint changed since compile for: {', '.join(stale)}.")
+    for o in rows:
+        if o["blueprint_id"] == st["blueprint_id"]:
+            continue
+        if o["state"] == "no-blueprint":
+            lines.append(f"Also: blueprint {o['blueprint_id']} — none yet at {o['blueprint']}.")
+        else:
+            n = o.get("next") or {}
+            tgt = f" {o['blueprint_id']}:{n['epic']}" if n.get("epic") else f" --blueprint {o['blueprint_id']}"
+            lines.append(f"Also: {o.get('product')} ({o['blueprint_id']}) — {o['epics_done']}/{o['epics_total']} epics done; next /{n.get('command')}{tgt}.")
+    if multi:
+        lines.append("Several blueprints: name one with `<id>:E01` or `--blueprint <id>`; the default is the active feature's.")
     lines.append("Workflow rules: use the speckit-blueprint-flow skill; never hand-edit compiled spec files.")
     return "\n".join(lines)
 
@@ -1106,18 +1416,29 @@ def bump_version(old: str | None) -> str:
         return "1.0.0"
 
 
+def feature_scope(cfg: dict) -> str:
+    """The feature folders a blueprint's rules govern."""
+    if cfg["implicit"]:
+        return f"Feature folders under `{cfg['specs_dir']}/` that contain `{TRACE_FILE}`"
+    legacy = f" (or, in folders compiled before blueprint ids, no `blueprint_id`)" if cfg["is_default"] and cfg["multi"] else ""
+    return f"Feature folders under `{cfg['specs_dir']}/` whose `{TRACE_FILE}` has `\"blueprint_id\": \"{cfg['id']}\"`{legacy}"
+
+
 def own_constitution(old: str, rel_bp: str, bp: "Blueprint", content_sha: str, body: list[str], cfg: dict, today: str) -> str:
-    """The whole constitution, compiled from the blueprint (a new project)."""
+    """The whole constitution, compiled from the blueprint (a new project). Managed blocks that other
+    blueprints added to it are kept, before Governance."""
     ver_m = re.search(r"\*\*Version\*\*:\s*([0-9.]+)", old) if GENERATED_MARK in old else None
     rat_m = re.search(r"\*\*Ratified\*\*:\s*([0-9-]+)", old) if GENERATED_MARK in old else None
-    old_sha = re.search(r"content-sha ([0-9a-f]+)", old)
+    old_sha = re.search(r"content-sha ([0-9a-f]+)", old.split("\n", 1)[0])
     if ver_m and old_sha and old_sha.group(1) == content_sha:
         version = ver_m.group(1)
     else:
         version = bump_version(ver_m.group(1) if ver_m else None)
-    scope = f"Specs under `{cfg['specs_dir']}/`"
+    scope = "Specs under `{}/`".format(cfg["specs_dir"]) if cfg["implicit"] else feature_scope(cfg)
+    others = [old[s:e] for i, s, e in managed_blocks(old, "rules:") if not owns_block(cfg, i)] if GENERATED_MARK in old else []
+    id_part = "" if cfg["implicit"] else f"blueprint-id {cfg['id']}, "
     return "\n".join([
-        f"<!-- {GENERATED_MARK} — constitution compiled from {rel_bp} (sha {bp.sha}, content-sha {content_sha}). "
+        f"<!-- {GENERATED_MARK} — constitution compiled from {rel_bp} ({id_part}sha {bp.sha}, content-sha {content_sha}). "
         "Do not edit by hand: change the blueprint, then run /speckit-blueprint-bootstrap. -->",
         f"# {bp.title()} Constitution",
         "",
@@ -1125,9 +1446,11 @@ def own_constitution(old: str, rel_bp: str, bp: "Blueprint", content_sha: str, b
         "",
         FIXED_PRINCIPLES.format(n="", bp=rel_bp, scope=scope, decisions=cfg["decisions_path"], checklist=cfg["review_checklist_path"]),
         "",
+        *([id_note(cfg), ""] if cfg["prefix"] else []),
         "## Engineering Rules (from the blueprint)",
         "",
         *body,
+        *[x for b in others for x in (b, "")],
         "## Governance",
         "",
         f"This constitution supersedes other practice in this repository. It is regenerated from {rel_bp}; "
@@ -1140,26 +1463,34 @@ def own_constitution(old: str, rel_bp: str, bp: "Blueprint", content_sha: str, b
 
 
 def append_rules(old: str, rel_bp: str, bp_sha: str, content_sha: str, body: list[str], cfg: dict) -> str:
-    """A project-owned constitution with one managed block of blueprint rules; the rest is left alone."""
-    scope = f"Feature folders under `{cfg['specs_dir']}/` that contain `{TRACE_FILE}`"
+    """A constitution with one managed block of blueprint rules per blueprint; the rest is left alone."""
+    scope = feature_scope(cfg)
+    bid = block_id(cfg)
+    if cfg["implicit"]:
+        title, n, applies = "## Blueprint Rules (speckit-blueprint)", "B-", f"(their folder contains `{TRACE_FILE}`)"
+    else:
+        tag = cfg["prefix"] or cfg["id"].upper()
+        title, n, applies = f"## Blueprint Rules: {tag} (speckit-blueprint, id={bid})", f"{tag}-", f"({scope[0].lower() + scope[1:]})"
     block = "\n".join([
-        RULES_START,
+        marker("rules:", "start", bid),
         f"<!-- Compiled from {rel_bp} (sha {bp_sha}, content-sha {content_sha}) by /speckit-blueprint-bootstrap. "
         "Edit the blueprint, not this block; the rest of this file belongs to the project. -->",
-        "## Blueprint Rules (speckit-blueprint)",
+        title,
         "",
-        f"These rules apply only to features compiled from `{rel_bp}` (their folder contains `{TRACE_FILE}`). "
-        "Every other feature follows this project's own workflow. They add to the principles above and never "
-        "override them: where the two conflict, the principles above win.",
+        f"These rules apply only to features compiled from `{rel_bp}` {applies}. "
+        "Every other feature follows this project's own workflow"
+        + ("" if cfg["implicit"] else ", and the blocks of other blueprints do not apply to it")
+        + ". They add to the principles above and never override them: where the two conflict, the principles above win.",
         "",
-        FIXED_PRINCIPLES.format(n="B-", bp=rel_bp, scope=scope, decisions=cfg["decisions_path"], checklist=cfg["review_checklist_path"]),
+        *([id_note(cfg), ""] if cfg["prefix"] else []),
+        FIXED_PRINCIPLES.format(n=n, bp=rel_bp, scope=scope, decisions=cfg["decisions_path"], checklist=cfg["review_checklist_path"]),
         "",
         "### Engineering rules from the blueprint",
         "",
         *body,
-        RULES_END,
+        marker("rules:", "end", bid),
     ])
-    span = rules_span(old)
+    span = find_block(old, "rules:", cfg)
     if span:
         return old[: span[0]] + block + old[span[1]:]
     m = re.search(r"^## Governance\b", old, re.M)
@@ -1172,8 +1503,8 @@ VERSION_RE = re.compile(r"(\*\*Version\*\*:\s*)(\d+)\.(\d+)\.(\d+)")
 LAST_AMENDED_RE = re.compile(r"(\*\*Last Amended\*\*:\s*)([0-9-]+)")
 
 
-def block_content_sha(text: str) -> str | None:
-    span = rules_span(text)
+def block_content_sha(text: str, cfg: dict) -> str | None:
+    span = find_block(text, "rules:", cfg)
     m = re.search(r"content-sha ([0-9a-f]+)", text[span[0]:span[1]]) if span else None
     return m.group(1) if m else None
 
@@ -1203,7 +1534,7 @@ def record_amendment(text: str, change: str, bump: str, rel_bp: str, today: str)
 def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
     rel_bp = os.path.relpath(bp.path, root)
     today = _dt.date.today().isoformat()
-    report = {}
+    report: dict = {"blueprint_id": cfg["id"]}
 
     # constitution
     cpath = root / ".specify" / "memory" / "constitution.md"
@@ -1219,10 +1550,15 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
     content_sha = sha("\n".join(body))
     mode = cfg.get("constitution_mode") or "auto"
     if mode == "auto":
-        owned = not old.strip() or TEMPLATE_MARK in old or (GENERATED_MARK in old and RULES_START not in old)
+        owned = not old.strip() or TEMPLATE_MARK in old or owns_constitution(cfg, old)
         mode = "own" if owned else "append"
+    if mode == "own" and own_owner(old) not in (False, None) and not owns_constitution(cfg, old):
+        raise SystemExit(
+            f"error: the constitution is compiled whole from blueprint '{own_owner(old)}'; "
+            f"constitution_mode: own would replace it. Use auto or append for '{cfg['id']}'."
+        )
     if mode == "append":
-        before = block_content_sha(old)
+        before = block_content_sha(old, cfg)
         change = "added" if before is None else ("updated" if before != content_sha else None)
         text = append_rules(old, rel_bp, bp.sha, content_sha, body, cfg)
         version = None
@@ -1269,11 +1605,13 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
             m = re.search(r"\*\*Status\*\*\s*([A-Za-z]+)", u.text(bp.lines))
             if m:
                 status = m.group(1).lower()
-            rows.append(f"| {ident} | {title[:90]} | blueprint | {status} |")
+            rows.append(f"| {qualify(cfg, ident)} | {title[:90]} | blueprint | {status} |")
         tpl = (Path(__file__).resolve().parent.parent / "templates" / "DECISIONS.md").read_text(encoding="utf-8")
         dpath.parent.mkdir(parents=True, exist_ok=True)
         dpath.write_text(
-            tpl.replace("{{PRODUCT}}", bp.title()).replace("{{BLUEPRINT}}", rel_bp).replace("{{ROWS}}", "\n".join(rows)),
+            tpl.replace("{{PRODUCT}}", bp.title()).replace("{{BLUEPRINT}}", rel_bp).replace("{{ROWS}}", "\n".join(rows))
+            .replace("{{FIND}}", f"blueprint.py find {qualify(cfg, 'DR-07')}")
+            .replace("{{ID_NOTE}}", ("\n" + id_note(cfg) + "\n") if cfg["prefix"] else ""),
             encoding="utf-8",
         )
         report["decisions"] = f"created {d_rel} with {len(rows)} blueprint DRs indexed"
@@ -1285,21 +1623,34 @@ def bootstrap(root: Path, cfg: dict, bp: Blueprint) -> dict:
         report["claude_md"] = "skipped (claude_md: false)"
         return report
     block_tpl = (Path(__file__).resolve().parent.parent / "templates" / "claude-block.md").read_text(encoding="utf-8")
-    block = block_tpl.replace("{{PRODUCT}}", bp.title()).replace("{{BLUEPRINT}}", rel_bp).replace("{{SPECS}}", cfg["specs_dir"]).replace("{{DECISIONS}}", cfg["decisions_path"])
-    block = f"{CLAUDE_START}\n{block.strip()}\n{CLAUDE_END}"
+    flag = "" if cfg["implicit"] or not cfg["multi"] else f" --blueprint {cfg['id']}"
+    values = {
+        "PRODUCT": bp.title() + ("" if cfg["implicit"] else f" ({cfg['prefix'] or cfg['id']})"),
+        "SCOPE": feature_scope(cfg),
+        "BLUEPRINT": rel_bp,
+        "DECISIONS": cfg["decisions_path"],
+        "EPIC": f"{cfg['id']}:Enn" if cfg["multi"] else "Enn",
+        "FLAG": flag,
+        "ID_NOTE": ("\n" + id_note(cfg) + "\n") if cfg["prefix"] else "",
+    }
+    for k, v in values.items():
+        block_tpl = block_tpl.replace("{{" + k + "}}", v)
+    bid = block_id(cfg)
+    block = f"{marker('', 'start', bid)}\n{block_tpl.strip()}\n{marker('', 'end', bid)}"
     cm = root / "CLAUDE.md"
-    if cm.is_file():
-        cur = cm.read_text(encoding="utf-8")
-        if CLAUDE_START in cur and CLAUDE_END in cur:
-            pre, rest = cur.split(CLAUDE_START, 1)
-            post = rest.split(CLAUDE_END, 1)[1]
-            new = pre + block + post
-        else:
-            new = cur.rstrip() + "\n\n" + block + "\n"
+    cur = cm.read_text(encoding="utf-8") if cm.is_file() else ""
+    span = find_block(cur, "", cfg)
+    if span:
+        new = cur[: span[0]] + block + cur[span[1]:]
     else:
-        new = block + "\n"
+        blocks = managed_blocks(cur, "")
+        if blocks:  # next to the other blueprints' blocks
+            end = blocks[-1][2]
+            new = cur[:end] + "\n\n" + block + cur[end:]
+        else:
+            new = (cur.rstrip() + "\n\n" if cur.strip() else "") + block + "\n"
     cm.write_text(new, encoding="utf-8")
-    report["claude_md"] = "CLAUDE.md managed block updated"
+    report["claude_md"] = "CLAUDE.md managed block updated" + ("" if cfg["implicit"] else f" (id={cfg['id']})")
     return report
 
 
@@ -1316,19 +1667,18 @@ def fresh_project(root: Path, cfg: dict) -> bool:
     return not c.is_file() or TEMPLATE_MARK in c.read_text(encoding="utf-8")
 
 
-def touches_rules(ti: dict, text: str, span: tuple[int, int]) -> bool:
-    """Whether an Edit/MultiEdit/Write would change the managed rules block of the constitution."""
+def touches_rules(ti: dict, text: str, spans: list[tuple[int, int]]) -> bool:
+    """Whether an Edit/MultiEdit/Write would change a managed rules block of the constitution."""
     if "content" in ti:
         new = ti.get("content") or ""
-        ns = rules_span(new)
-        return ns is None or new[ns[0]:ns[1]] != text[span[0]:span[1]]
+        return any(text[s:e] not in new for s, e in spans)
     olds = [ti.get("old_string")] + [e.get("old_string") for e in ti.get("edits") or []]
     for o in olds:
         if not o:
             continue
         i = text.find(o)
         while i >= 0:
-            if i < span[1] and i + len(o) > span[0]:
+            if any(i < e and i + len(o) > s for s, e in spans):
                 return True
             i = text.find(o, i + 1)
     return False
@@ -1339,12 +1689,12 @@ def hook_session_start(root: Path, cfg: dict) -> int:
         sys.stdin.read()
     except OSError:
         pass
-    if not (root / cfg["blueprint_path"]).is_file():
+    if not any((root / bp_config(cfg, bid)["blueprint_path"]).is_file() for bid in cfg["blueprints"]):
         # Without a blueprint, speak only in a fresh project; an existing Spec Kit project keeps its own flow.
         if not (root / ".specify" / "extensions" / EXT_ID).is_dir() or not fresh_project(root, cfg):
             return 0
     try:
-        print(brief(project_status(root, cfg)))
+        print(brief(full_status(root, cfg, select_id(root, cfg))))
     except Exception as exc:  # a status failure must never block a session
         print(f"[speckit-blueprint] status unavailable: {exc}")
     return 0
@@ -1369,22 +1719,25 @@ def hook_guard(root: Path, cfg: dict) -> int:
         return 0
     parts = rel.parts
     blocked = None
+    sources = sorted({bp_config(cfg, bid)["blueprint_path"] for bid in cfg["blueprints"]})
     if rel.as_posix() == ".specify/memory/constitution.md":
         c = root / rel
         text = c.read_text(encoding="utf-8") if c.is_file() else ""
-        span = rules_span(text)
-        if span:
-            if touches_rules(ti, text, span):
-                blocked = "its Blueprint Rules block is compiled from the blueprint (/speckit-blueprint-bootstrap); the rest of the file is yours"
-        elif GENERATED_MARK in text:
+        blocks = managed_blocks(text, "rules:")
+        if GENERATED_MARK in text:
             blocked = "the constitution is compiled from the blueprint (/speckit-blueprint-bootstrap)"
+        elif blocks and touches_rules(ti, text, [(s, e) for _, s, e in blocks]):
+            blocked = "its Blueprint Rules blocks are compiled from the blueprints (/speckit-blueprint-bootstrap); the rest of the file is yours"
     elif len(parts) >= 3 and parts[0] == cfg["specs_dir"] and (root / parts[0] / parts[1] / TRACE_FILE).is_file():
         inner = Path(*parts[2:]).as_posix()
         if inner in COMPILED_FILES or inner.startswith("contracts/"):
             blocked = f"{inner} is compiled from the blueprint (/speckit-blueprint-compile)"
+            trace = read_trace(root / parts[0] / parts[1]) or {}
+            if trace.get("blueprint"):
+                sources = [trace["blueprint"]]
     if blocked:
         sys.stderr.write(
-            f"speckit-blueprint guard: {rel.as_posix()} — {blocked}. Change docs/BLUEPRINT.md through "
+            f"speckit-blueprint guard: {rel.as_posix()} — {blocked}. Change {' or '.join(sources)} through "
             "/speckit-blueprint-amend and recompile instead. tasks.md and review.md stay editable. "
             "(Disable with `guard: false` in .specify/extensions/blueprint/blueprint-config.yml.)\n"
         )
@@ -1396,63 +1749,137 @@ def hook_guard(root: Path, cfg: dict) -> int:
 # CLI
 
 
+def pop_option(args: list[str], name: str) -> tuple[str | None, list[str]]:
+    """`--name value` or `--name=value` → (value, the other args)."""
+    out, value, i = [], None, 0
+    while i < len(args):
+        a = args[i]
+        if a == name and i + 1 < len(args):
+            value, i = args[i + 1], i + 2
+            continue
+        if a.startswith(name + "="):
+            value = a.split("=", 1)[1]
+        else:
+            out.append(a)
+        i += 1
+    return value, out
+
+
+def rules_text(root: Path, bcfg: dict) -> str | None:
+    """The constitution rules that govern this blueprint's features: its managed block, or the whole
+    constitution when it was compiled from this blueprint."""
+    c = root / ".specify" / "memory" / "constitution.md"
+    text = c.read_text(encoding="utf-8") if c.is_file() else ""
+    span = find_block(text, "rules:", bcfg)
+    if span:
+        return text[span[0]:span[1]]
+    if owns_constitution(bcfg, text):
+        return "".join(
+            part for k, part in enumerate(re.split(r"(<!-- speckit-blueprint:rules:start.*?<!-- speckit-blueprint:rules:end[^>]*-->)", text, flags=re.S))
+            if k % 2 == 0
+        )
+    return None
+
+
 def main(argv: list[str]) -> int:
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0
     root = find_root(Path.cwd())
-    cfg = load_config(root)
     cmd, args = argv[0], argv[1:]
-
-    if cmd == "hook":
-        if args[:1] == ["session-start"]:
-            return hook_session_start(root, cfg)
-        if args[:1] == ["guard"]:
-            return hook_guard(root, cfg)
-        print("usage: blueprint.py hook session-start|guard", file=sys.stderr)
+    wanted, args = pop_option(args, "--blueprint")
+    try:
+        cfg = load_config(root)
+        if cmd == "hook":
+            if args[:1] == ["session-start"]:
+                return hook_session_start(root, cfg)
+            if args[:1] == ["guard"]:
+                return hook_guard(root, cfg)
+            print("usage: blueprint.py hook session-start|guard", file=sys.stderr)
+            return 1
+        return run(root, cfg, cmd, args, wanted)
+    except ConfigError as exc:
+        if cmd == "hook":  # a broken config must never block a session or an edit
+            if args[:1] == ["session-start"]:
+                print(f"[speckit-blueprint] config error: {exc}")
+            return 0
+        print(f"error: {exc}", file=sys.stderr)
         return 1
 
+
+def run(root: Path, cfg: dict, cmd: str, args: list[str], wanted: str | None) -> int:
+    # `desk:E01` names the blueprint inline; it must agree with --blueprint when both are given.
+    note_at = args.index("--note") + 1 if "--note" in args else -1
+    keys = [a for k, a in enumerate(args) if not a.startswith("--") and k != note_at]
+    inline = None
+    if cmd in ("compile", "accept") and keys:
+        inline, key = split_qualified(cfg, keys[0])
+        args = [key if a == keys[0] else a for a in args]
+    if inline and wanted and resolve_id(cfg, wanted) != inline:
+        raise ConfigError(f"{keys[0]} and --blueprint {wanted} name different blueprints")
+    bid = inline or select_id(root, cfg, wanted)
+    bcfg = bp_config(cfg, bid)
+
     if cmd == "status":
-        st = project_status(root, cfg)
+        st = full_status(root, cfg, bid)
         print(brief(st) if "--brief" in args else json.dumps(st, indent=2, ensure_ascii=False))
         return 0
 
-    bp_path = root / cfg["blueprint_path"]
-    if not bp_path.is_file():
-        print(f"error: blueprint not found at {cfg['blueprint_path']} (set blueprint_path in the extension config)", file=sys.stderr)
-        return 1
-    bp = Blueprint(bp_path)
+    if cmd == "rules":
+        t = rules_text(root, bcfg)
+        if t is None:
+            print(f"error: the constitution has no rules from blueprint '{bid}'; run /speckit-blueprint-bootstrap", file=sys.stderr)
+            return 1
+        print(t)
+        return 0
+
+    cache: dict = {}
+
+    def load(b: str) -> Blueprint:
+        if b not in cache:
+            path = root / bp_config(cfg, b)["blueprint_path"]
+            if not path.is_file():
+                raise ConfigError(f"blueprint '{b}' not found at {bp_config(cfg, b)['blueprint_path']} (set its path in the extension config)")
+            cache[b] = Blueprint(path)
+        return cache[b]
+
+    if cmd in ("section", "find"):
+        # Each argument may name its blueprint: `desk:DR-03`, `one:14.4`.
+        rc = 0
+        for arg in args:
+            if arg.startswith("--"):
+                continue
+            other, key = split_qualified(cfg, arg)
+            bp = load(other or bid)
+            if cmd == "section":
+                t = bp.section_text(key)
+                if t is None:
+                    print(f"error: no section '{key}' in {bp.path.name}", file=sys.stderr)
+                    rc = 1
+                else:
+                    print(t + "\n")
+                continue
+            units = bp.defs.get(key)
+            if not units:
+                print(f"error: {arg} is not defined outside the epics", file=sys.stderr)
+                rc = 1
+                continue
+            print(f"<!-- {qualify(bp_config(cfg, other or bid), key)} -->\n" + render_units(bp, [(key, u) for u in units]) + "\n")
+        return rc
+
+    bp = load(bid)
+    bp_path = bp.path
 
     if cmd == "compile":
         keys = [a for a in args if not a.startswith("--")]
         if not keys:
-            print("usage: blueprint.py compile E03 [--force]", file=sys.stderr)
+            print("usage: blueprint.py compile E03 [--force] [--blueprint <id>]", file=sys.stderr)
             return 1
-        print(json.dumps(compile_epic(root, cfg, bp, keys[0], force="--force" in args), indent=2, ensure_ascii=False))
+        print(json.dumps(compile_epic(root, bcfg, bp, keys[0], force="--force" in args), indent=2, ensure_ascii=False))
         return 0
     if cmd == "bootstrap":
-        print(json.dumps(bootstrap(root, cfg, bp), indent=2, ensure_ascii=False))
+        print(json.dumps(bootstrap(root, bcfg, bp), indent=2, ensure_ascii=False))
         return 0
-    if cmd == "section":
-        rc = 0
-        for key in args:
-            t = bp.section_text(key)
-            if t is None:
-                print(f"error: no section '{key}'", file=sys.stderr)
-                rc = 1
-            else:
-                print(t + "\n")
-        return rc
-    if cmd == "find":
-        rc = 0
-        for ident in args:
-            units = bp.defs.get(ident)
-            if not units:
-                print(f"error: {ident} is not defined outside the epics", file=sys.stderr)
-                rc = 1
-                continue
-            print(f"<!-- {ident} -->\n" + render_units(bp, [(ident, u) for u in units]) + "\n")
-        return rc
     if cmd == "accept":
         keys = [a for a in args if not a.startswith("--")]
         note = args[args.index("--note") + 1] if "--note" in args and args.index("--note") + 1 < len(args) else ""
@@ -1460,18 +1887,17 @@ def main(argv: list[str]) -> int:
             print('usage: blueprint.py accept E01 --note "why the built epic stays as it is"', file=sys.stderr)
             return 1
         keys = [k for k in keys if k != note]
-        print(json.dumps(accept_change(root, cfg, bp, keys[0], note), indent=2, ensure_ascii=False))
+        print(json.dumps(accept_change(root, bcfg, bp, keys[0], note), indent=2, ensure_ascii=False))
         return 0
     if cmd == "stale":
         out = []
         for e in bp.epics:
-            d = find_feature_dir(root, cfg, e["id"])
+            d = find_feature_dir(root, bcfg, e["id"])
             if d:
-                trace = json.loads((d / TRACE_FILE).read_text(encoding="utf-8"))
-                changed = stale_units(bp, trace)
+                changed = stale_units(bp, read_trace(d) or {})
                 if changed:
                     total, done = task_counts(d / "tasks.md")
-                    out.append({"epic": e["id"], "feature_directory": d.relative_to(root).as_posix(), "changed": changed, "tasks_done": done, "tasks_total": total})
+                    out.append({"blueprint_id": bid, "epic": e["id"], "feature_directory": d.relative_to(root).as_posix(), "changed": changed, "tasks_done": done, "tasks_total": total})
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return 0
     if cmd in ("refs", "lint"):
@@ -1484,7 +1910,7 @@ def main(argv: list[str]) -> int:
             print("\nReference resolution (blueprint.py refs):")
         out = {}
         for e in bp.epics:
-            _, pairs, unresolved = epic_refs(bp, e, cfg)
+            _, pairs, unresolved = epic_refs(bp, e, bcfg)
             out[e["id"]] = {"resolved": len({i for i, _ in pairs}), "unresolved": unresolved}
         if any(v["unresolved"] for v in out.values()):
             out["how_to_define"] = REFS_HINT
